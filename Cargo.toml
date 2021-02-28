@@ -1,0 +1,17 @@
+[package]
+name = "dune-scene"
+version = "0.1.0"
+authors = ["Ashley Ruglys <ashley.ruglys@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.38"
+bytemuck = { version = "1.5.1", features = ["derive"] }
+gltf = { version = "0.15.2", default-features = false, features = ["utils", "names", "KHR_lights_punctual"] }
+image = { version = "0.23.13", default-features = false, features = ["png"] }
+pollster = "0.2.1"
+ultraviolet = { version = "0.7.5", features = ["bytemuck"] }
+wgpu = "0.7.0"
+winit = "0.24.0"
