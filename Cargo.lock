@@ -394,6 +394,7 @@ dependencies = [
  "gltf",
  "image",
  "pollster",
+ "primitives",
  "ultraviolet",
  "wgpu",
  "winit",
@@ -1230,6 +1231,14 @@ name = "pollster"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a0c427c464eaca5923b642b3b346792b9c98edd91026aa6a753435e42d2a07b"
+
+[[package]]
+name = "primitives"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "ultraviolet",
+]
 
 [[package]]
 name = "proc-macro-crate"

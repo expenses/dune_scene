@@ -1,3 +1,7 @@
+use primitives::{Sun, Vertex};
+use ultraviolet::{Mat4, Vec3};
+use wgpu::util::DeviceExt;
+
 fn main() -> anyhow::Result<()> {
     pollster::block_on(run())
 }
@@ -307,8 +311,6 @@ fn create_texture(
         .create_view(&wgpu::TextureViewDescriptor::default())
 }
 
-use wgpu::util::DeviceExt;
-
 fn load_scene(
     bytes: &[u8],
     device: &wgpu::Device,
@@ -407,18 +409,16 @@ fn load_scene(
             let normals = reader.read_normals().unwrap();
             let tangents = reader.read_tangents().unwrap();
 
-            positions
-                .zip(uvs)
-                .zip(normals)
-                .zip(tangents)
-                .for_each(|(((position, uv), normal), tangent)| {
+            positions.zip(uvs).zip(normals).zip(tangents).for_each(
+                |(((position, uv), normal), tangent)| {
                     vertices.push(Vertex {
                         position: position.into(),
                         uv: uv.into(),
                         normal: normal.into(),
                         tangent: tangent.into(),
                     });
-                })
+                },
+            )
         }
     }
 
@@ -491,25 +491,6 @@ fn load_image(
             &*image,
         )
         .create_view(&wgpu::TextureViewDescriptor::default()))
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct Sun {
-    facing: Vec3,
-    padding: u32,
-    output: Vec3,
-}
-
-use ultraviolet::{Mat4, Vec2, Vec3, Vec4};
-
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: Vec3,
-    normal: Vec3,
-    uv: Vec2,
-    tangent: Vec4,
 }
 
 struct Scene {
