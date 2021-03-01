@@ -98,6 +98,8 @@ async fn run() -> anyhow::Result<()> {
         label: Some("linear sampler"),
         mag_filter: wgpu::FilterMode::Linear,
         min_filter: wgpu::FilterMode::Linear,
+        address_mode_u: wgpu::AddressMode::Repeat,
+        address_mode_v: wgpu::AddressMode::Repeat,
         ..Default::default()
     });
 
@@ -124,14 +126,12 @@ async fn run() -> anyhow::Result<()> {
     let width = window_size.width;
     let height = window_size.height;
 
-    let aspect_ratio = width as f32 / height as f32;
-    let perspective_matrix = scene.create_perspective_matrix(aspect_ratio);
-    let perspective_view = perspective_matrix * scene.camera_view;
+    let camera = scene.create_camera(width, height);
 
     let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("camera buffer"),
         usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        contents: bytemuck::bytes_of(&perspective_view),
+        contents: bytemuck::bytes_of(&camera),
     });
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -232,11 +232,8 @@ async fn run() -> anyhow::Result<()> {
                     wgpu::TextureUsage::RENDER_ATTACHMENT,
                 );
 
-                let aspect_ratio = width as f32 / height as f32;
-                let perspective_matrix = scene.create_perspective_matrix(aspect_ratio);
-                let perspective_view = perspective_matrix * scene.camera_view;
-
-                queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&perspective_view));
+                let camera = scene.create_camera(width, height);
+                queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
             }
             _ => {}
         },
@@ -445,6 +442,7 @@ fn load_scene(
         vertices,
         indices,
         num_indices,
+        camera_eye,
     })
 }
 
@@ -497,6 +495,7 @@ struct Scene {
     camera_y_fov: f32,
     camera_z_near: f32,
     camera_view: Mat4,
+    camera_eye: Vec3,
     texture_bind_group: wgpu::BindGroup,
     sun_buffer: wgpu::Buffer,
     vertices: wgpu::Buffer,
@@ -505,12 +504,19 @@ struct Scene {
 }
 
 impl Scene {
-    fn create_perspective_matrix(&self, aspect_ratio: f32) -> Mat4 {
-        ultraviolet::projection::perspective_infinite_z_wgpu_dx(
+    fn create_camera(&self, width: u32, height: u32) -> primitives::Camera {
+        let perspective = ultraviolet::projection::perspective_infinite_z_wgpu_dx(
             self.camera_y_fov,
-            aspect_ratio,
+            width as f32 / height as f32,
             self.camera_z_near,
-        )
+        );
+
+        let perspective_view = perspective * self.camera_view;
+
+        primitives::Camera {
+            perspective_view,
+            position: self.camera_eye,
+        }
     }
 }
 
