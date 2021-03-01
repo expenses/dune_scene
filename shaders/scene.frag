@@ -23,10 +23,6 @@ void main() {
     vec3 bitangent = cross(in_normal, in_tangent.xyz) * in_tangent.w;
     mat3 TBN = mat3(tangent, bitangent, normal);
     vec3 local_normal = texture(sampler2D(u_normal_map_texture, u_sampler), in_uv).xyz * 2.0 - 1.0;
-
-    float strength = 0.6;
-    local_normal = normalize(mix(vec3(0.0, 0.0, 1.0), local_normal, strength));
-
     normal = normalize(TBN * local_normal);
 
     vec3 ambient = vec3(0.051);
@@ -35,11 +31,13 @@ void main() {
 
     vec3 camera_dir = normalize(in_camera_dir);
     vec3 halfway_dir = normalize(sun.facing + camera_dir);
-    float specular = pow(max(dot(normal, halfway_dir), 0.0), 64.0);
+    float specular = pow(max(dot(normal, halfway_dir), 0.0), 128.0);
 
-    vec3 coloured_lighting = diffuse * sun.light_output + ambient + specular;
+    vec3 texture_colour = texture(sampler2D(u_diffuse_texture, u_sampler), in_uv).rgb;
 
-    vec4 texture_colour = texture(sampler2D(u_diffuse_texture, u_sampler), in_uv);
+    vec3 diffuse_colour = texture_colour * (diffuse * sun.light_output + ambient);
 
-    colour = vec4(coloured_lighting, 1.0) * texture_colour;
+    vec3 specular_colour = specular * sun.light_output;
+
+    colour = vec4(diffuse_colour + specular_colour, 1.0);
 }
