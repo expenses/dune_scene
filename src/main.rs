@@ -1,8 +1,10 @@
-use primitives::{Sun, Vertex, Vec3A};
+use primitives::{Sun, Vec3A, Vertex};
 use ultraviolet::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
     pollster::block_on(run())
 }
 
@@ -33,89 +35,10 @@ async fn run() -> anyhow::Result<()> {
         )
         .await?;
 
-    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("bind group layout"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStage::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStage::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 2,
-                visibility: wgpu::ShaderStage::FRAGMENT,
-                ty: wgpu::BindingType::Sampler {
-                    filtering: false,
-                    comparison: false,
-                },
-                count: None,
-            },
-        ],
-    });
-
-    let texture_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("texture bind group layout"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStage::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStage::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            },
-        ],
-    });
-
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("linear sampler"),
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        address_mode_u: wgpu::AddressMode::Repeat,
-        address_mode_v: wgpu::AddressMode::Repeat,
-        ..Default::default()
-    });
-
-    let scene_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("scene pipeline layout"),
-        bind_group_layouts: &[&bind_group_layout, &texture_bgl],
-        push_constant_ranges: &[],
-    });
-
-    let vs_scene = wgpu::include_spirv!("../shaders/compiled/scene.vert.spv");
-    let vs_scene = device.create_shader_module(&vs_scene);
-    let fs_scene = wgpu::include_spirv!("../shaders/compiled/scene.frag.spv");
-    let fs_scene = device.create_shader_module(&fs_scene);
+    let resources = RenderResources::new(&device);
 
     let scene_bytes = include_bytes!("../models/dune.glb");
-    let scene = load_scene(scene_bytes, &device, &queue, &texture_bgl)?;
+    let scene = load_scene(scene_bytes, &device, &queue, &resources.texture_bgl)?;
 
     // Now we can create a window.
 
@@ -136,7 +59,7 @@ async fn run() -> anyhow::Result<()> {
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("bind group"),
-        layout: &bind_group_layout,
+        layout: &resources.main_bgl,
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
@@ -148,7 +71,7 @@ async fn run() -> anyhow::Result<()> {
             },
             wgpu::BindGroupEntry {
                 binding: 2,
-                resource: wgpu::BindingResource::Sampler(&sampler),
+                resource: wgpu::BindingResource::Sampler(&resources.sampler),
             },
         ],
     });
@@ -157,37 +80,7 @@ async fn run() -> anyhow::Result<()> {
 
     let display_format = adapter.get_swap_chain_preferred_format(&surface);
 
-    let scene_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("scene pipeline"),
-        layout: Some(&scene_pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &vs_scene,
-            entry_point: "main",
-            buffers: &[wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<Vertex>() as u64,
-                step_mode: wgpu::InputStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-            }],
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &fs_scene,
-            entry_point: "main",
-            targets: &[display_format.into()],
-        }),
-        primitive: wgpu::PrimitiveState {
-            cull_mode: wgpu::CullMode::Back,
-            ..Default::default()
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: DEPTH_FORMAT,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-            clamp_depth: false,
-        }),
-        multisample: wgpu::MultisampleState::default(),
-    });
+    let pipelines = Pipelines::new(&device, display_format, &resources);
 
     let mut swap_chain_descriptor = wgpu::SwapChainDescriptor {
         usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
@@ -266,7 +159,7 @@ async fn run() -> anyhow::Result<()> {
                     ),
                 });
 
-                render_pass.set_pipeline(&scene_pipeline);
+                render_pass.set_pipeline(&pipelines.scene_pipeline);
                 render_pass.set_bind_group(0, &bind_group, &[]);
                 render_pass.set_bind_group(1, &scene.texture_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
@@ -547,5 +440,144 @@ impl NodeTree {
         }
 
         transform_sum
+    }
+}
+
+/// All the permement resources that we can load before creating a window.
+struct RenderResources {
+    main_bgl: wgpu::BindGroupLayout,
+    texture_bgl: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+}
+
+impl RenderResources {
+    fn new(device: &wgpu::Device) -> Self {
+        Self {
+            main_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("bind group layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler {
+                            filtering: false,
+                            comparison: false,
+                        },
+                        count: None,
+                    },
+                ],
+            }),
+            texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("texture bind group layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                ],
+            }),
+            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("linear sampler"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                address_mode_u: wgpu::AddressMode::Repeat,
+                address_mode_v: wgpu::AddressMode::Repeat,
+                ..Default::default()
+            }),
+        }
+    }
+}
+
+struct Pipelines {
+    scene_pipeline: wgpu::RenderPipeline,
+}
+
+impl Pipelines {
+    fn new(
+        device: &wgpu::Device,
+        display_format: wgpu::TextureFormat,
+        resources: &RenderResources,
+    ) -> Self {
+        let scene_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("scene pipeline layout"),
+                bind_group_layouts: &[&resources.main_bgl, &resources.texture_bgl],
+                push_constant_ranges: &[],
+            });
+
+        let vs_scene = wgpu::include_spirv!("../shaders/compiled/scene.vert.spv");
+        let vs_scene = device.create_shader_module(&vs_scene);
+        let fs_scene = wgpu::include_spirv!("../shaders/compiled/scene.frag.spv");
+        let fs_scene = device.create_shader_module(&fs_scene);
+
+        Self {
+            scene_pipeline: device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("scene pipeline"),
+                layout: Some(&scene_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &vs_scene,
+                    entry_point: "main",
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Vertex>() as u64,
+                        step_mode: wgpu::InputStepMode::Vertex,
+                        attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
+                    }],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &fs_scene,
+                    entry_point: "main",
+                    targets: &[display_format.into()],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: wgpu::CullMode::Back,
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                    clamp_depth: false,
+                }),
+                multisample: wgpu::MultisampleState::default(),
+            }),
+        }
     }
 }
