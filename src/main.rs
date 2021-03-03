@@ -1,4 +1,4 @@
-use primitives::{Sun, Vertex};
+use primitives::{Sun, Vertex, Vec3A};
 use ultraviolet::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
@@ -370,8 +370,7 @@ fn load_scene(
     let sun = Sun {
         // Lighting uses the -Z axis.
         // https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Khronos/KHR_lights_punctual/README.md#directional
-        facing: sun_rotor * Vec3::unit_z(),
-        padding: 0,
+        facing: Vec3A::new(sun_rotor * Vec3::unit_z()),
         output: Vec3::from(sun.color()) * sun.intensity(),
     };
 

@@ -1,10 +1,26 @@
 use ultraviolet::{Mat4, Vec2, Vec3, Vec4};
 
+/// A 16-byte aligned `Vec3`.
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vec3A {
+    inner: Vec3,
+    padding: u32,
+}
+
+impl Vec3A {
+    pub fn new(vec: Vec3) -> Self {
+        Self {
+            inner: vec,
+            padding: 0,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Sun {
-    pub facing: Vec3,
-    pub padding: u32,
+    pub facing: Vec3A,
     pub output: Vec3,
 }
 
