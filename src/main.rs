@@ -1,7 +1,7 @@
 use primitives::{Sun, Vec3A, Vertex};
+use std::collections::HashMap;
 use ultraviolet::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
-use std::collections::HashMap;
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
@@ -50,7 +50,6 @@ async fn run() -> anyhow::Result<()> {
         usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         contents: bytemuck::bytes_of(&settings),
     });
-
 
     let scene_bytes = include_bytes!("../models/dune.glb");
     let scene = load_scene(scene_bytes, &device, &queue, &resources.texture_bgl)?;
@@ -146,8 +145,16 @@ async fn run() -> anyhow::Result<()> {
 
                 let camera = scene.create_camera(width, height);
                 queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
-            },
-            WindowEvent::KeyboardInput { input: KeyboardInput { state, virtual_keycode: Some(key), .. }, .. } => {
+            }
+            WindowEvent::KeyboardInput {
+                input:
+                    KeyboardInput {
+                        state,
+                        virtual_keycode: Some(key),
+                        ..
+                    },
+                ..
+            } => {
                 let pressed = state == &ElementState::Pressed;
 
                 let mut settings_dirty = true;
@@ -270,7 +277,10 @@ fn load_scene(
     let mut image_map = HashMap::new();
 
     for image in gltf.images() {
-        image_map.insert(image.name().unwrap(), load_image(&image, buffer_blob, device, queue)?);
+        image_map.insert(
+            image.name().unwrap(),
+            load_image(&image, buffer_blob, device, queue)?,
+        );
     }
 
     println!("{:?}", image_map);
