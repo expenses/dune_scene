@@ -100,6 +100,25 @@ async fn run() -> anyhow::Result<()> {
 
     let pipelines = Pipelines::new(&device, display_format, &resources);
 
+    let mut imgui = imgui::Context::create();
+    let mut imgui_platform = imgui_winit_support::WinitPlatform::init(&mut imgui);
+    imgui_platform.attach_window(
+        imgui.io_mut(),
+        &window,
+        imgui_winit_support::HiDpiMode::Default,
+    );
+    imgui.set_ini_filename(None);
+
+    let mut imgui_renderer = imgui_wgpu::Renderer::new(
+        &mut imgui,
+        &device,
+        &queue,
+        imgui_wgpu::RendererConfig {
+            texture_format: display_format,
+            ..Default::default()
+        },
+    );
+
     let mut swap_chain_descriptor = wgpu::SwapChainDescriptor {
         usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
         format: display_format,
@@ -122,100 +141,131 @@ async fn run() -> anyhow::Result<()> {
     use winit::event::*;
     use winit::event_loop::*;
 
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::WindowEvent { ref event, .. } => match event {
-            WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-            WindowEvent::Resized(size) => {
-                let width = size.width as u32;
-                let height = size.height as u32;
+    event_loop.run(move |event, _, control_flow| {
+        imgui_platform.handle_event(imgui.io_mut(), &window, &event);
 
-                swap_chain_descriptor.width = width;
-                swap_chain_descriptor.height = height;
+        match event {
+            Event::WindowEvent { ref event, .. } => match event {
+                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                WindowEvent::Resized(size) => {
+                    let width = size.width as u32;
+                    let height = size.height as u32;
 
-                swap_chain = device.create_swap_chain(&surface, &swap_chain_descriptor);
+                    swap_chain_descriptor.width = width;
+                    swap_chain_descriptor.height = height;
 
-                depth_texture = create_texture(
-                    &device,
-                    "depth texture",
-                    width,
-                    height,
-                    DEPTH_FORMAT,
-                    wgpu::TextureUsage::RENDER_ATTACHMENT,
-                );
+                    swap_chain = device.create_swap_chain(&surface, &swap_chain_descriptor);
 
-                let camera = scene.create_camera(width, height);
-                queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
-            }
-            WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        state,
-                        virtual_keycode: Some(key),
-                        ..
-                    },
-                ..
-            } => {
-                let pressed = state == &ElementState::Pressed;
+                    depth_texture = create_texture(
+                        &device,
+                        "depth texture",
+                        width,
+                        height,
+                        DEPTH_FORMAT,
+                        wgpu::TextureUsage::RENDER_ATTACHMENT,
+                    );
 
-                let mut settings_dirty = true;
-
-                match key {
-                    VirtualKeyCode::Left if pressed => settings.specular_power -= 1.0,
-                    VirtualKeyCode::Right if pressed => settings.specular_power += 1.0,
-                    VirtualKeyCode::Up if pressed => settings.detail_map_scale += 0.1,
-                    VirtualKeyCode::Down if pressed => settings.detail_map_scale -= 0.1,
-                    _ => settings_dirty = false,
-                };
-
-                if settings_dirty {
-                    queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
+                    let camera = scene.create_camera(width, height);
+                    queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
                 }
-            }
-            _ => {}
-        },
-        Event::MainEventsCleared => window.request_redraw(),
-        Event::RedrawRequested(_) => match swap_chain.get_current_frame() {
-            Ok(frame) => {
-                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("render encoder"),
-                });
+                _ => {}
+            },
+            Event::MainEventsCleared => window.request_redraw(),
+            Event::RedrawRequested(_) => match swap_chain.get_current_frame() {
+                Ok(frame) => {
+                    let mut encoder =
+                        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("render encoder"),
+                        });
 
-                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("main render pass"),
-                    color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                        attachment: &frame.output.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: true,
-                        },
-                    }],
-                    depth_stencil_attachment: Some(
-                        wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                            attachment: &depth_texture,
-                            depth_ops: Some(wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(1.0),
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("main render pass"),
+                        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                            attachment: &frame.output.view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                                 store: true,
-                            }),
-                            stencil_ops: None,
-                        },
-                    ),
-                });
+                            },
+                        }],
+                        depth_stencil_attachment: Some(
+                            wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                                attachment: &depth_texture,
+                                depth_ops: Some(wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(1.0),
+                                    store: true,
+                                }),
+                                stencil_ops: None,
+                            },
+                        ),
+                    });
 
-                render_pass.set_pipeline(&pipelines.scene_pipeline);
-                render_pass.set_bind_group(0, &bind_group, &[]);
-                render_pass.set_bind_group(1, &scene.texture_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
-                render_pass.set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
+                    render_pass.set_pipeline(&pipelines.scene_pipeline);
+                    render_pass.set_bind_group(0, &bind_group, &[]);
+                    render_pass.set_bind_group(1, &scene.texture_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
+                    render_pass
+                        .set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
 
-                drop(render_pass);
+                    drop(render_pass);
 
-                queue.submit(Some(encoder.finish()));
-            }
-            Err(error) => println!("Swap chain error: {:?}", error),
-        },
-        _ => {}
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("ui render pass"),
+                        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                            attachment: &frame.output.view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: true,
+                            },
+                        }],
+                        depth_stencil_attachment: None,
+                    });
+
+                    imgui_platform
+                        .prepare_frame(imgui.io_mut(), &window)
+                        .expect("Failed to prepare frame");
+                    let ui = imgui.frame();
+
+                    {
+                        let mut settings_dirty = false;
+
+                        let mut base_colour: [f32; 3] = settings.base_colour.into();
+
+                        if imgui::ColorPicker::new(imgui::im_str!("Colour"), &mut base_colour).build(&ui) {
+                            settings.base_colour = base_colour.into();
+                            settings_dirty = true;
+                        }
+
+                        let mut ambient_lighting: [f32; 3] = settings.ambient_lighting.into();
+
+                        if imgui::ColorPicker::new(imgui::im_str!("Ambient Lighting"), &mut ambient_lighting).build(&ui) {
+                            settings.ambient_lighting = ambient_lighting.into();
+                            settings_dirty = true;
+                        }
+
+                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Specular Power")).range(0.0 ..= 512.0).build(&ui, &mut settings.specular_power);
+
+                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Detail Scale")).range(0.0 ..= 10.0).build(&ui, &mut settings.detail_map_scale);
+
+                        if settings_dirty {
+                            queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
+                        }
+
+                        imgui_renderer
+                            .render(ui.render(), &queue, &device, &mut render_pass)
+                            .expect("Rendering failed");
+                    }
+
+                    drop(render_pass);
+
+                    queue.submit(Some(encoder.finish()));
+                }
+                Err(error) => println!("Swap chain error: {:?}", error),
+            },
+            _ => {}
+        }
     });
 }
 
