@@ -1,6 +1,7 @@
 use primitives::{Sun, Vec3A, Vertex};
 use ultraviolet::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
+use std::collections::HashMap;
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
@@ -37,6 +38,20 @@ async fn run() -> anyhow::Result<()> {
 
     let resources = RenderResources::new(&device);
 
+    let mut settings = primitives::Settings {
+        specular_power: 128.0,
+        base_colour: Vec3::new(0.8, 0.535, 0.297),
+        detail_map_scale: 1.5,
+        ambient_lighting: Vec3::broadcast(0.051),
+    };
+
+    let settings_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("settings buffer"),
+        usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        contents: bytemuck::bytes_of(&settings),
+    });
+
+
     let scene_bytes = include_bytes!("../models/dune.glb");
     let scene = load_scene(scene_bytes, &device, &queue, &resources.texture_bgl)?;
 
@@ -72,6 +87,10 @@ async fn run() -> anyhow::Result<()> {
             wgpu::BindGroupEntry {
                 binding: 2,
                 resource: wgpu::BindingResource::Sampler(&resources.sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: settings_buffer.as_entire_binding(),
             },
         ],
     });
@@ -127,6 +146,23 @@ async fn run() -> anyhow::Result<()> {
 
                 let camera = scene.create_camera(width, height);
                 queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
+            },
+            WindowEvent::KeyboardInput { input: KeyboardInput { state, virtual_keycode: Some(key), .. }, .. } => {
+                let pressed = state == &ElementState::Pressed;
+
+                let mut settings_dirty = true;
+
+                match key {
+                    VirtualKeyCode::Left if pressed => settings.specular_power -= 1.0,
+                    VirtualKeyCode::Right if pressed => settings.specular_power += 1.0,
+                    VirtualKeyCode::Up if pressed => settings.detail_map_scale += 0.1,
+                    VirtualKeyCode::Down if pressed => settings.detail_map_scale -= 0.1,
+                    _ => settings_dirty = false,
+                };
+
+                if settings_dirty {
+                    queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
+                }
             }
             _ => {}
         },
@@ -231,13 +267,13 @@ fn load_scene(
     let camera_up = camera_rotor * Vec3::unit_y();
     let camera_view = Mat4::look_at(camera_eye, camera_eye + camera_view_direction, camera_up);
 
-    let mut images = gltf.images();
+    let mut image_map = HashMap::new();
 
-    let normal_map_image = images.next().unwrap();
-    let normal_map_texture = load_image(&normal_map_image, buffer_blob, device, queue)?;
+    for image in gltf.images() {
+        image_map.insert(image.name().unwrap(), load_image(&image, buffer_blob, device, queue)?);
+    }
 
-    let diffuse_image = images.next().unwrap();
-    let diffuse_texture = load_image(&diffuse_image, buffer_blob, device, queue)?;
+    println!("{:?}", image_map);
 
     let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("texture bind group"),
@@ -245,11 +281,11 @@ fn load_scene(
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::TextureView(&diffuse_texture),
+                resource: wgpu::BindingResource::TextureView(&image_map.get("normals").unwrap()),
             },
             wgpu::BindGroupEntry {
                 binding: 1,
-                resource: wgpu::BindingResource::TextureView(&normal_map_texture),
+                resource: wgpu::BindingResource::TextureView(&image_map.get("details").unwrap()),
             },
         ],
     });
@@ -452,64 +488,53 @@ struct RenderResources {
 
 impl RenderResources {
     fn new(device: &wgpu::Device) -> Self {
+        let uniform = |binding, shader_stage| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: shader_stage,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        };
+
+        let texture = |binding, shader_stage| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: shader_stage,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        };
+
+        let sampler = |binding, shader_stage| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: shader_stage,
+            ty: wgpu::BindingType::Sampler {
+                filtering: false,
+                comparison: false,
+            },
+            count: None,
+        };
+
         Self {
             main_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("bind group layout"),
                 entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStage::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler {
-                            filtering: false,
-                            comparison: false,
-                        },
-                        count: None,
-                    },
+                    uniform(0, wgpu::ShaderStage::VERTEX),
+                    uniform(1, wgpu::ShaderStage::FRAGMENT),
+                    sampler(2, wgpu::ShaderStage::FRAGMENT),
+                    uniform(3, wgpu::ShaderStage::FRAGMENT),
                 ],
             }),
             texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("texture bind group layout"),
                 entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
+                    texture(0, wgpu::ShaderStage::FRAGMENT),
+                    texture(1, wgpu::ShaderStage::FRAGMENT),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {

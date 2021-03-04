@@ -52,3 +52,12 @@ pub struct Camera {
     pub perspective_view: Mat4,
     pub position: Vec3,
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Settings {
+    pub base_colour: Vec3,
+    pub specular_power: f32,
+    pub ambient_lighting: Vec3,
+    pub detail_map_scale: f32,
+}
