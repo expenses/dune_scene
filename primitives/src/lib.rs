@@ -57,7 +57,39 @@ pub struct Camera {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Settings {
     pub base_colour: Vec3,
-    pub specular_power: f32,
-    pub ambient_lighting: Vec3,
     pub detail_map_scale: f32,
+    pub ambient_lighting: Vec3,
+    pub roughness: f32,
+    pub mode: u32,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Mode {
+    Full,
+    Diffuse,
+    Specular,
+    Normals,
+    LocalNormals,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Self::Full
+    }
+}
+
+impl Mode {
+    pub fn iter() -> impl Iterator<Item = (Self, u32)> {
+        [
+            Self::Full,
+            Self::Diffuse,
+            Self::Specular,
+            Self::Normals,
+            Self::LocalNormals,
+        ]
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, mode)| (mode, i as u32))
+    }
 }

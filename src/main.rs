@@ -39,10 +39,11 @@ async fn run() -> anyhow::Result<()> {
     let resources = RenderResources::new(&device);
 
     let mut settings = primitives::Settings {
-        specular_power: 128.0,
         base_colour: Vec3::new(0.8, 0.535, 0.297),
         detail_map_scale: 1.5,
-        ambient_lighting: Vec3::broadcast(0.051),
+        ambient_lighting: Vec3::broadcast(0.024),
+        roughness: 0.207,
+        mode: primitives::Mode::default() as u32,
     };
 
     let settings_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -138,6 +139,8 @@ async fn run() -> anyhow::Result<()> {
         wgpu::TextureUsage::RENDER_ATTACHMENT,
     );
 
+    let mut render_sun_dir = false;
+
     use winit::event::*;
     use winit::event_loop::*;
 
@@ -208,9 +211,11 @@ async fn run() -> anyhow::Result<()> {
                         .set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
                     render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
 
-                    render_pass.set_pipeline(&pipelines.sun_dir_pipeline);
-                    render_pass.set_bind_group(0, &sun_dir_bind_group, &[]);
-                    render_pass.draw(0..2, 0..1);
+                    if render_sun_dir {
+                        render_pass.set_pipeline(&pipelines.sun_dir_pipeline);
+                        render_pass.set_bind_group(0, &bind_group, &[]);
+                        render_pass.draw(0..2, 0..1);
+                    }
 
                     drop(render_pass);
 
@@ -237,21 +242,43 @@ async fn run() -> anyhow::Result<()> {
 
                         let mut base_colour: [f32; 3] = settings.base_colour.into();
 
-                        if imgui::ColorPicker::new(imgui::im_str!("Colour"), &mut base_colour).build(&ui) {
+                        if imgui::ColorPicker::new(imgui::im_str!("Colour"), &mut base_colour)
+                            .build(&ui)
+                        {
                             settings.base_colour = base_colour.into();
                             settings_dirty = true;
                         }
 
                         let mut ambient_lighting: [f32; 3] = settings.ambient_lighting.into();
 
-                        if imgui::ColorPicker::new(imgui::im_str!("Ambient Lighting"), &mut ambient_lighting).build(&ui) {
+                        if imgui::ColorPicker::new(
+                            imgui::im_str!("Ambient Lighting"),
+                            &mut ambient_lighting,
+                        )
+                        .build(&ui)
+                        {
                             settings.ambient_lighting = ambient_lighting.into();
                             settings_dirty = true;
                         }
 
-                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Specular Power")).range(0.0 ..= 512.0).build(&ui, &mut settings.specular_power);
+                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Detail Scale"))
+                            .range(0.0..=10.0)
+                            .build(&ui, &mut settings.detail_map_scale);
 
-                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Detail Scale")).range(0.0 ..= 10.0).build(&ui, &mut settings.detail_map_scale);
+                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Roughness"))
+                            .range(0.0..=1.0)
+                            .speed(0.005)
+                            .build(&ui, &mut settings.roughness);
+
+                        for (mode, index) in primitives::Mode::iter() {
+                            settings_dirty |= ui.radio_button(
+                                &imgui::im_str!("{:?}", mode),
+                                &mut settings.mode,
+                                index,
+                            );
+                        }
+
+                        ui.checkbox(imgui::im_str!("Render Sun Direction"), &mut render_sun_dir);
 
                         if settings_dirty {
                             queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
@@ -336,8 +363,6 @@ fn load_scene(
             load_image(&image, buffer_blob, device, queue)?,
         );
     }
-
-    println!("{:?}", image_map);
 
     let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("texture bind group"),
@@ -680,7 +705,8 @@ impl Pipelines {
 
                 let vs_sun_dir = wgpu::include_spirv!("../shaders/compiled/sun_dir.vert.spv");
                 let vs_sun_dir = device.create_shader_module(&vs_sun_dir);
-                let fs_flat_colour = wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
+                let fs_flat_colour =
+                    wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
                 let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
