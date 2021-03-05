@@ -44,6 +44,7 @@ async fn run() -> anyhow::Result<()> {
         ambient_lighting: Vec3::broadcast(0.024),
         roughness: 0.207,
         mode: primitives::Mode::default() as u32,
+        specular_factor: 1.0,
     };
 
     let settings_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -269,6 +270,11 @@ async fn run() -> anyhow::Result<()> {
                             .range(0.0..=1.0)
                             .speed(0.005)
                             .build(&ui, &mut settings.roughness);
+
+                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Specular Factor"))
+                            .range(0.0..=1.0)
+                            .speed(0.005)
+                            .build(&ui, &mut settings.specular_factor);
 
                         for (mode, index) in primitives::Mode::iter() {
                             settings_dirty |= ui.radio_button(

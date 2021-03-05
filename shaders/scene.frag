@@ -21,6 +21,7 @@ layout(set = 0, binding = 3) uniform Settings {
     float detail_map_scale;
     vec3 ambient_lighting;
     float roughness;
+    float specular_factor;
     uint mode;
 } settings;
 
@@ -83,10 +84,12 @@ void main() {
 
     vec3 lighting_factor = sun.light_output * NdotL;
 
-    vec3 diffuse =  lighting_factor * BRDF_lambertian(f0, f90, settings.base_colour, VdotH);
-    vec3 specular = lighting_factor * BRDF_specularGGX(f0, f90, alpha_roughness, VdotH, NdotL, NdotV, NdotH);
+    vec3 diffuse =  lighting_factor *
+        BRDF_lambertian(f0, f90, settings.base_colour, VdotH);
+    vec3 specular = settings.specular_factor * lighting_factor *
+        BRDF_specularGGX(f0, f90, alpha_roughness, VdotH, NdotL, NdotV, NdotH);
 
-    vec3 colour = diffuse + specular;
+    vec3 colour = settings.ambient_lighting + diffuse + specular;
 
     // todo: HDR
     //colour = colour / (colour + vec3(1.0));
@@ -96,18 +99,10 @@ void main() {
         case 0:
             break;
         case 1:
-            colour = diffuse;
-            break;
-        case 2:
-            colour = specular;
-            break;
-        case 3:
             // To compare with the normals in blender, we need to shift the
             // normals from Y space to Z space.
             colour = normal_to_view_space(normal.xzy * vec3(1, -1, 1));
             break;
-        case 4:
-            colour = normal_to_view_space(local_normal);
     }
 
     out_colour = vec4(colour, 1.0);
