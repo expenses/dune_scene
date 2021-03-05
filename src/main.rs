@@ -94,6 +94,21 @@ async fn run() -> anyhow::Result<()> {
         ],
     });
 
+    let sun_dir_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("sun dir bind group"),
+        layout: &resources.sun_dir_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: scene.sun_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
     let surface = unsafe { instance.create_surface(&window) };
 
     let display_format = adapter.get_swap_chain_preferred_format(&surface);
@@ -207,6 +222,10 @@ async fn run() -> anyhow::Result<()> {
                     render_pass
                         .set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
                     render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
+
+                    render_pass.set_pipeline(&pipelines.sun_dir_pipeline);
+                    render_pass.set_bind_group(0, &sun_dir_bind_group, &[]);
+                    render_pass.draw(0..2, 0..1);
 
                     drop(render_pass);
 
@@ -543,6 +562,7 @@ impl NodeTree {
 struct RenderResources {
     main_bgl: wgpu::BindGroupLayout,
     texture_bgl: wgpu::BindGroupLayout,
+    sun_dir_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 }
 
@@ -597,6 +617,13 @@ impl RenderResources {
                     texture(1, wgpu::ShaderStage::FRAGMENT),
                 ],
             }),
+            sun_dir_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("sun dir bind group layout"),
+                entries: &[
+                    uniform(0, wgpu::ShaderStage::VERTEX),
+                    uniform(1, wgpu::ShaderStage::VERTEX),
+                ],
+            }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("linear sampler"),
                 mag_filter: wgpu::FilterMode::Linear,
@@ -611,6 +638,7 @@ impl RenderResources {
 
 struct Pipelines {
     scene_pipeline: wgpu::RenderPipeline,
+    sun_dir_pipeline: wgpu::RenderPipeline,
 }
 
 impl Pipelines {
@@ -619,50 +647,93 @@ impl Pipelines {
         display_format: wgpu::TextureFormat,
         resources: &RenderResources,
     ) -> Self {
-        let scene_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("scene pipeline layout"),
-                bind_group_layouts: &[&resources.main_bgl, &resources.texture_bgl],
-                push_constant_ranges: &[],
-            });
-
-        let vs_scene = wgpu::include_spirv!("../shaders/compiled/scene.vert.spv");
-        let vs_scene = device.create_shader_module(&vs_scene);
-        let fs_scene = wgpu::include_spirv!("../shaders/compiled/scene.frag.spv");
-        let fs_scene = device.create_shader_module(&fs_scene);
-
         Self {
-            scene_pipeline: device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("scene pipeline"),
-                layout: Some(&scene_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &vs_scene,
-                    entry_point: "main",
-                    buffers: &[wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<Vertex>() as u64,
-                        step_mode: wgpu::InputStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-                    }],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &fs_scene,
-                    entry_point: "main",
-                    targets: &[display_format.into()],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    cull_mode: wgpu::CullMode::Back,
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH_FORMAT,
-                    depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::Less,
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                    clamp_depth: false,
-                }),
-                multisample: wgpu::MultisampleState::default(),
-            }),
+            scene_pipeline: {
+                let scene_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("scene pipeline layout"),
+                        bind_group_layouts: &[&resources.main_bgl, &resources.texture_bgl],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_scene = wgpu::include_spirv!("../shaders/compiled/scene.vert.spv");
+                let vs_scene = device.create_shader_module(&vs_scene);
+                let fs_scene = wgpu::include_spirv!("../shaders/compiled/scene.frag.spv");
+                let fs_scene = device.create_shader_module(&fs_scene);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("scene pipeline"),
+                    layout: Some(&scene_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_scene,
+                        entry_point: "main",
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<Vertex>() as u64,
+                            step_mode: wgpu::InputStepMode::Vertex,
+                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
+                        }],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_scene,
+                        entry_point: "main",
+                        targets: &[display_format.into()],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        cull_mode: wgpu::CullMode::Back,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                        clamp_depth: false,
+                    }),
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
+            sun_dir_pipeline: {
+                let sun_dir_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("sun dir pipeline layout"),
+                        bind_group_layouts: &[&resources.sun_dir_bgl],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_sun_dir = wgpu::include_spirv!("../shaders/compiled/sun_dir.vert.spv");
+                let vs_sun_dir = device.create_shader_module(&vs_sun_dir);
+                let fs_flat_colour = wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
+                let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("sun dir pipeline"),
+                    layout: Some(&sun_dir_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_sun_dir,
+                        entry_point: "main",
+                        buffers: &[],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_flat_colour,
+                        entry_point: "main",
+                        targets: &[display_format.into()],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::LineList,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                        clamp_depth: false,
+                    }),
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
         }
     }
 }
