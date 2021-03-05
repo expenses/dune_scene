@@ -10,6 +10,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+const FRAMEBUFFER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba32Float;
 
 async fn run() -> anyhow::Result<()> {
     let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
@@ -51,6 +52,21 @@ async fn run() -> anyhow::Result<()> {
         label: Some("settings buffer"),
         usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         contents: bytemuck::bytes_of(&settings),
+    });
+
+    let mut tonemapper_params = TonemapperParams {
+        toe: 1.0,
+        shoulder: 0.987,
+        max_luminance: 20.0,
+        grey_in: 0.75,
+        grey_out: 0.5,
+        enable: true,
+    };
+
+    let tonemapper_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Tonemapper uniform buffer"),
+        usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        contents: bytemuck::bytes_of(&tonemapper_params.convert()),
     });
 
     let scene_bytes = include_bytes!("../models/dune.glb");
@@ -140,6 +156,15 @@ async fn run() -> anyhow::Result<()> {
         wgpu::TextureUsage::RENDER_ATTACHMENT,
     );
 
+    let (mut framebuffer_texture, mut tonemapper_bind_group) =
+        framebuffer_and_tonemapper_bind_group(
+            &device,
+            width,
+            height,
+            &resources,
+            &tonemapper_uniform_buffer,
+        );
+
     let mut render_sun_dir = false;
 
     use winit::event::*;
@@ -169,6 +194,18 @@ async fn run() -> anyhow::Result<()> {
                         wgpu::TextureUsage::RENDER_ATTACHMENT,
                     );
 
+                    let (new_framebuffer_texture, new_tonemapper_bind_group) =
+                        framebuffer_and_tonemapper_bind_group(
+                            &device,
+                            width,
+                            height,
+                            &resources,
+                            &tonemapper_uniform_buffer,
+                        );
+
+                    framebuffer_texture = new_framebuffer_texture;
+                    tonemapper_bind_group = new_tonemapper_bind_group;
+
                     let camera = scene.create_camera(width, height);
                     queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
                 }
@@ -185,7 +222,7 @@ async fn run() -> anyhow::Result<()> {
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("main render pass"),
                         color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                            attachment: &frame.output.view,
+                            attachment: &framebuffer_texture,
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -212,13 +249,55 @@ async fn run() -> anyhow::Result<()> {
                         .set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
                     render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
 
+                    drop(render_pass);
+
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("tonemap render pass"),
+                        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                            attachment: &frame.output.view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                store: true,
+                            },
+                        }],
+                        depth_stencil_attachment: None,
+                    });
+
+                    render_pass.set_pipeline(&pipelines.tonemap_pipeline);
+                    render_pass.set_bind_group(0, &tonemapper_bind_group, &[]);
+                    render_pass.draw(0..3, 0..1);
+
+                    drop(render_pass);
+
                     if render_sun_dir {
+                        let mut render_pass =
+                            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                label: Some("sun dir render pass"),
+                                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                                    attachment: &frame.output.view,
+                                    resolve_target: None,
+                                    ops: wgpu::Operations {
+                                        load: wgpu::LoadOp::Load,
+                                        store: true,
+                                    },
+                                }],
+                                depth_stencil_attachment: Some(
+                                    wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                                        attachment: &depth_texture,
+                                        depth_ops: Some(wgpu::Operations {
+                                            load: wgpu::LoadOp::Load,
+                                            store: true,
+                                        }),
+                                        stencil_ops: None,
+                                    },
+                                ),
+                            });
+
                         render_pass.set_pipeline(&pipelines.sun_dir_pipeline);
                         render_pass.set_bind_group(0, &bind_group, &[]);
                         render_pass.draw(0..2, 0..1);
                     }
-
-                    drop(render_pass);
 
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("ui render pass"),
@@ -240,6 +319,7 @@ async fn run() -> anyhow::Result<()> {
 
                     {
                         let mut settings_dirty = false;
+                        let mut tonemapper_dirty = false;
 
                         let mut base_colour: [f32; 3] = settings.base_colour.into();
 
@@ -286,8 +366,21 @@ async fn run() -> anyhow::Result<()> {
 
                         ui.checkbox(imgui::im_str!("Render Sun Direction"), &mut render_sun_dir);
 
+                        tonemapper_dirty |= ui.checkbox(
+                            imgui::im_str!("Enable Tonemapper"),
+                            &mut tonemapper_params.enable,
+                        );
+
                         if settings_dirty {
                             queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
+                        }
+
+                        if tonemapper_dirty {
+                            queue.write_buffer(
+                                &tonemapper_uniform_buffer,
+                                0,
+                                bytemuck::bytes_of(&tonemapper_params.convert()),
+                            );
                         }
 
                         imgui_renderer
@@ -329,6 +422,44 @@ fn create_texture(
             usage,
         })
         .create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+fn framebuffer_and_tonemapper_bind_group(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    resources: &RenderResources,
+    tonemapper_uniform_buffer: &wgpu::Buffer,
+) -> (wgpu::TextureView, wgpu::BindGroup) {
+    let framebuffer_texture = create_texture(
+        &device,
+        "framebuffer texture",
+        width,
+        height,
+        FRAMEBUFFER_FORMAT,
+        wgpu::TextureUsage::RENDER_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
+    );
+
+    let tonemapper_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("tonemapper bind group"),
+        layout: &resources.tonemap_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&framebuffer_texture),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&resources.sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: tonemapper_uniform_buffer.as_entire_binding(),
+            },
+        ],
+    });
+
+    (framebuffer_texture, tonemapper_bind_group)
 }
 
 fn load_scene(
@@ -578,6 +709,7 @@ impl NodeTree {
 struct RenderResources {
     main_bgl: wgpu::BindGroupLayout,
     texture_bgl: wgpu::BindGroupLayout,
+    tonemap_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 }
 
@@ -632,6 +764,14 @@ impl RenderResources {
                     texture(1, wgpu::ShaderStage::FRAGMENT),
                 ],
             }),
+            tonemap_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("tonemapper bind group layout"),
+                entries: &[
+                    texture(0, wgpu::ShaderStage::FRAGMENT),
+                    sampler(1, wgpu::ShaderStage::FRAGMENT),
+                    uniform(2, wgpu::ShaderStage::FRAGMENT),
+                ],
+            }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("linear sampler"),
                 mag_filter: wgpu::FilterMode::Linear,
@@ -647,6 +787,7 @@ impl RenderResources {
 struct Pipelines {
     scene_pipeline: wgpu::RenderPipeline,
     sun_dir_pipeline: wgpu::RenderPipeline,
+    tonemap_pipeline: wgpu::RenderPipeline,
 }
 
 impl Pipelines {
@@ -684,7 +825,7 @@ impl Pipelines {
                     fragment: Some(wgpu::FragmentState {
                         module: &fs_scene,
                         entry_point: "main",
-                        targets: &[display_format.into()],
+                        targets: &[FRAMEBUFFER_FORMAT.into()],
                     }),
                     primitive: wgpu::PrimitiveState {
                         cull_mode: wgpu::CullMode::Back,
@@ -743,6 +884,76 @@ impl Pipelines {
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
+            tonemap_pipeline: {
+                let tonemap_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("tonemapper pipeline layout"),
+                        bind_group_layouts: &[&resources.tonemap_bgl],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_fullscreen_tri =
+                    wgpu::include_spirv!("../shaders/compiled/fullscreen_tri.vert.spv");
+                let vs_fullscreen_tri = device.create_shader_module(&vs_fullscreen_tri);
+                let fs_tonemap = wgpu::include_spirv!("../shaders/compiled/tonemap.frag.spv");
+                let fs_tonemap = device.create_shader_module(&fs_tonemap);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("tonemap pipeline"),
+                    layout: Some(&tonemap_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_fullscreen_tri,
+                        entry_point: "main",
+                        buffers: &[],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_tonemap,
+                        entry_point: "main",
+                        targets: &[display_format.into()],
+                    }),
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
         }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct TonemapperParams {
+    toe: f32,
+    shoulder: f32,
+    max_luminance: f32,
+    grey_in: f32,
+    grey_out: f32,
+    enable: bool,
+}
+
+impl TonemapperParams {
+    fn convert(self) -> primitives::TonemapperSettings {
+        let TonemapperParams {
+            toe,
+            shoulder,
+            max_luminance,
+            grey_in,
+            grey_out,
+            enable,
+        } = self;
+
+        let a = toe;
+        let d = shoulder;
+
+        let denominator = (max_luminance.powf(a * d) - grey_in.powf(a * d)) * grey_out;
+
+        let b = (-grey_in.powf(a) + max_luminance.powf(a) * grey_out) / denominator;
+
+        let c = (max_luminance.powf(a * d) * grey_in.powf(a)
+            - max_luminance.powf(a) * grey_in.powf(a * d) * grey_out)
+            / denominator;
+
+        let mode = enable as u32;
+
+        primitives::TonemapperSettings { a, b, c, d, mode }
     }
 }

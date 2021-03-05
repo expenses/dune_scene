@@ -87,3 +87,13 @@ impl Mode {
             .map(|(i, mode)| (mode, i as u32))
     }
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct TonemapperSettings {
+    pub a: f32,
+    pub b: f32,
+    pub c: f32,
+    pub d: f32,
+    pub mode: u32,
+}
