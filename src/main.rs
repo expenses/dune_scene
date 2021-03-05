@@ -94,21 +94,6 @@ async fn run() -> anyhow::Result<()> {
         ],
     });
 
-    let sun_dir_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("sun dir bind group"),
-        layout: &resources.sun_dir_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: scene.sun_buffer.as_entire_binding(),
-            },
-        ],
-    });
-
     let surface = unsafe { instance.create_surface(&window) };
 
     let display_format = adapter.get_swap_chain_preferred_format(&surface);
@@ -562,7 +547,6 @@ impl NodeTree {
 struct RenderResources {
     main_bgl: wgpu::BindGroupLayout,
     texture_bgl: wgpu::BindGroupLayout,
-    sun_dir_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 }
 
@@ -605,7 +589,7 @@ impl RenderResources {
                 label: Some("bind group layout"),
                 entries: &[
                     uniform(0, wgpu::ShaderStage::VERTEX),
-                    uniform(1, wgpu::ShaderStage::FRAGMENT),
+                    uniform(1, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::VERTEX),
                     sampler(2, wgpu::ShaderStage::FRAGMENT),
                     uniform(3, wgpu::ShaderStage::FRAGMENT),
                 ],
@@ -615,13 +599,6 @@ impl RenderResources {
                 entries: &[
                     texture(0, wgpu::ShaderStage::FRAGMENT),
                     texture(1, wgpu::ShaderStage::FRAGMENT),
-                ],
-            }),
-            sun_dir_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("sun dir bind group layout"),
-                entries: &[
-                    uniform(0, wgpu::ShaderStage::VERTEX),
-                    uniform(1, wgpu::ShaderStage::VERTEX),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
@@ -697,7 +674,7 @@ impl Pipelines {
                 let sun_dir_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("sun dir pipeline layout"),
-                        bind_group_layouts: &[&resources.sun_dir_bgl],
+                        bind_group_layouts: &[&resources.main_bgl],
                         push_constant_ranges: &[],
                     });
 
