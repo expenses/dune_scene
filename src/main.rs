@@ -272,7 +272,7 @@ async fn run() -> anyhow::Result<()> {
                             .build(&ui, &mut settings.roughness);
 
                         settings_dirty |= imgui::Drag::new(imgui::im_str!("Specular Factor"))
-                            .range(0.0..=1.0)
+                            .range(0.0..=2.0)
                             .speed(0.005)
                             .build(&ui, &mut settings.specular_factor);
 

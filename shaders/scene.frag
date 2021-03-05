@@ -1,6 +1,7 @@
 #version 450
 
 #include "brdf.glsl"
+#include "utils.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec2 in_uv;
@@ -86,8 +87,13 @@ void main() {
 
     vec3 diffuse =  lighting_factor *
         BRDF_lambertian(f0, f90, settings.base_colour, VdotH);
-    vec3 specular = settings.specular_factor * lighting_factor *
+    vec3 specular = lighting_factor *
         BRDF_specularGGX(f0, f90, alpha_roughness, VdotH, NdotL, NdotV, NdotH);
+
+    float noise = random(in_uv);
+    vec3 hue_noise = hsv2rgb_smooth(vec3(noise, 1.0, 1.0));
+
+    specular *= settings.specular_factor * hue_noise;
 
     vec3 colour = settings.ambient_lighting + diffuse + specular;
 
@@ -102,6 +108,12 @@ void main() {
             // To compare with the normals in blender, we need to shift the
             // normals from Y space to Z space.
             colour = normal_to_view_space(normal.xzy * vec3(1, -1, 1));
+            break;
+        case 2:
+            colour = vec3(noise);
+            break;
+        case 3:
+            colour = hue_noise;
             break;
     }
 

@@ -68,6 +68,8 @@ pub struct Settings {
 pub enum Mode {
     Full,
     Normals,
+    Noise,
+    HueNoise,
 }
 
 impl Default for Mode {
@@ -78,7 +80,7 @@ impl Default for Mode {
 
 impl Mode {
     pub fn iter() -> impl Iterator<Item = (Self, u32)> {
-        [Self::Full, Self::Normals]
+        [Self::Full, Self::Normals, Self::Noise, Self::HueNoise]
             .iter()
             .cloned()
             .enumerate()

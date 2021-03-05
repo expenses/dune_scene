@@ -4,8 +4,6 @@ version = "0.1.0"
 authors = ["Ashley Ruglys <ashley.ruglys@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 anyhow = "1.0.38"
 bytemuck = "1.5.1"
@@ -15,12 +13,16 @@ pollster = "0.2.1"
 ultraviolet = "0.7.5"
 wgpu = "0.7.0"
 winit = "0.24.0"
-env_logger = "0.8.3"
+env_logger = { version = "0.8.3", default-features = false, features = ["humantime", "atty", "termcolor"] }
 imgui = "0.7.0"
 imgui-wgpu = "0.14.0"
 imgui-winit-support = "0.7.0"
 
 primitives = { path = "primitives" }
+
+# Compile all dependencies in release mode
+[profile.dev.package."*"]
+opt-level = 3
 
 [workspace]
 members = [
