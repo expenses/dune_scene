@@ -72,19 +72,9 @@ pub enum Mode {
     HueNoise,
 }
 
-impl Default for Mode {
-    fn default() -> Self {
-        Self::Full
-    }
-}
-
 impl Mode {
     pub fn iter() -> impl Iterator<Item = (Self, u32)> {
-        [Self::Full, Self::Normals, Self::Noise, Self::HueNoise]
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(i, mode)| (mode, i as u32))
+        enumerate(&[Self::Full, Self::Normals, Self::Noise, Self::HueNoise])
     }
 }
 
@@ -96,4 +86,25 @@ pub struct TonemapperSettings {
     pub c: f32,
     pub d: f32,
     pub mode: u32,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum TonemapperMode {
+    On,
+    NoCrosstalk,
+    Off,
+}
+
+impl TonemapperMode {
+    pub fn iter() -> impl Iterator<Item = Self> {
+        [Self::On, Self::NoCrosstalk, Self::Off].iter().cloned()
+    }
+}
+
+fn enumerate<T: Copy>(slice: &'static [T]) -> impl Iterator<Item = (T, u32)> {
+    slice
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, t)| (t, i as u32))
 }

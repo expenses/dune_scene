@@ -44,7 +44,7 @@ async fn run() -> anyhow::Result<()> {
         detail_map_scale: 1.5,
         ambient_lighting: Vec3::broadcast(0.024),
         roughness: 0.207,
-        mode: primitives::Mode::default() as u32,
+        mode: primitives::Mode::Full as u32,
         specular_factor: 1.0,
     };
 
@@ -57,10 +57,10 @@ async fn run() -> anyhow::Result<()> {
     let mut tonemapper_params = TonemapperParams {
         toe: 1.0,
         shoulder: 0.987,
-        max_luminance: 20.0,
-        grey_in: 0.75,
+        max_luminance: 1.0,
+        grey_in: 0.5,
         grey_out: 0.5,
-        enable: true,
+        mode: primitives::TonemapperMode::On,
     };
 
     let tonemapper_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -366,10 +366,42 @@ async fn run() -> anyhow::Result<()> {
 
                         ui.checkbox(imgui::im_str!("Render Sun Direction"), &mut render_sun_dir);
 
-                        tonemapper_dirty |= ui.checkbox(
-                            imgui::im_str!("Enable Tonemapper"),
-                            &mut tonemapper_params.enable,
-                        );
+                        for mode in primitives::TonemapperMode::iter() {
+                            tonemapper_dirty |= ui.radio_button(
+                                &imgui::im_str!("Tonemapper {:?}", mode),
+                                &mut tonemapper_params.mode,
+                                mode,
+                            );
+                        }
+
+                        tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Toe"))
+                            .range(1.0..=3.0)
+                            .speed(0.005)
+                            .build(&ui, &mut tonemapper_params.toe);
+
+                        tonemapper_dirty |=
+                            imgui::Drag::new(imgui::im_str!("Tonemapper - Shoulder"))
+                                .range(0.5..=2.0)
+                                .speed(0.005)
+                                .build(&ui, &mut tonemapper_params.shoulder);
+
+                        tonemapper_dirty |=
+                            imgui::Drag::new(imgui::im_str!("Tonemapper - Max Luminance"))
+                                .range(0.0..=30.0)
+                                .speed(0.1)
+                                .build(&ui, &mut tonemapper_params.max_luminance);
+
+                        tonemapper_dirty |=
+                            imgui::Drag::new(imgui::im_str!("Tonemapper - Grey In"))
+                                .range(0.0..=tonemapper_params.max_luminance / 2.0)
+                                .speed(0.05)
+                                .build(&ui, &mut tonemapper_params.grey_in);
+
+                        tonemapper_dirty |=
+                            imgui::Drag::new(imgui::im_str!("Tonemapper - Grey Out"))
+                                .range(0.0..=0.5)
+                                .speed(0.005)
+                                .build(&ui, &mut tonemapper_params.grey_out);
 
                         if settings_dirty {
                             queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
@@ -927,10 +959,11 @@ struct TonemapperParams {
     max_luminance: f32,
     grey_in: f32,
     grey_out: f32,
-    enable: bool,
+    mode: primitives::TonemapperMode,
 }
 
 impl TonemapperParams {
+    // Based on https://www.desmos.com/calculator/0eo9pzo1at.
     fn convert(self) -> primitives::TonemapperSettings {
         let TonemapperParams {
             toe,
@@ -938,7 +971,7 @@ impl TonemapperParams {
             max_luminance,
             grey_in,
             grey_out,
-            enable,
+            mode,
         } = self;
 
         let a = toe;
@@ -952,7 +985,7 @@ impl TonemapperParams {
             - max_luminance.powf(a) * grey_in.powf(a * d) * grey_out)
             / denominator;
 
-        let mode = enable as u32;
+        let mode = mode as u32;
 
         primitives::TonemapperSettings { a, b, c, d, mode }
     }

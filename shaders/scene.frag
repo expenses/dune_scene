@@ -97,10 +97,6 @@ void main() {
 
     vec3 colour = settings.ambient_lighting + diffuse + specular;
 
-    // todo: HDR
-    //colour = colour / (colour + vec3(1.0));
-    //colour = pow(colour, vec3(1.0/2.2));
-
     switch (settings.mode) {
         case 0:
             break;
