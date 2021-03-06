@@ -1,6 +1,8 @@
-use primitives::{Sun, Vec3A, Vertex};
-use std::collections::HashMap;
-use ultraviolet::{Mat4, Vec3};
+mod model_loading;
+
+use model_loading::Scene;
+use primitives::Vertex;
+use ultraviolet::Vec3;
 use wgpu::util::DeviceExt;
 
 fn main() -> anyhow::Result<()> {
@@ -70,7 +72,7 @@ async fn run() -> anyhow::Result<()> {
     });
 
     let scene_bytes = include_bytes!("../models/dune.glb");
-    let scene = load_scene(scene_bytes, &device, &queue, &resources.texture_bgl)?;
+    let scene = Scene::load(scene_bytes, &device, &queue, &resources.texture_bgl)?;
 
     // Now we can create a window.
 
@@ -318,90 +320,12 @@ async fn run() -> anyhow::Result<()> {
                     let ui = imgui.frame();
 
                     {
-                        let mut settings_dirty = false;
-                        let mut tonemapper_dirty = false;
-
-                        let mut base_colour: [f32; 3] = settings.base_colour.into();
-
-                        if imgui::ColorPicker::new(imgui::im_str!("Colour"), &mut base_colour)
-                            .build(&ui)
-                        {
-                            settings.base_colour = base_colour.into();
-                            settings_dirty = true;
-                        }
-
-                        let mut ambient_lighting: [f32; 3] = settings.ambient_lighting.into();
-
-                        if imgui::ColorPicker::new(
-                            imgui::im_str!("Ambient Lighting"),
-                            &mut ambient_lighting,
-                        )
-                        .build(&ui)
-                        {
-                            settings.ambient_lighting = ambient_lighting.into();
-                            settings_dirty = true;
-                        }
-
-                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Detail Scale"))
-                            .range(0.0..=10.0)
-                            .build(&ui, &mut settings.detail_map_scale);
-
-                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Roughness"))
-                            .range(0.0..=1.0)
-                            .speed(0.005)
-                            .build(&ui, &mut settings.roughness);
-
-                        settings_dirty |= imgui::Drag::new(imgui::im_str!("Specular Factor"))
-                            .range(0.0..=2.0)
-                            .speed(0.005)
-                            .build(&ui, &mut settings.specular_factor);
-
-                        for (mode, index) in primitives::Mode::iter() {
-                            settings_dirty |= ui.radio_button(
-                                &imgui::im_str!("{:?}", mode),
-                                &mut settings.mode,
-                                index,
-                            );
-                        }
-
-                        ui.checkbox(imgui::im_str!("Render Sun Direction"), &mut render_sun_dir);
-
-                        for mode in primitives::TonemapperMode::iter() {
-                            tonemapper_dirty |= ui.radio_button(
-                                &imgui::im_str!("Tonemapper {:?}", mode),
-                                &mut tonemapper_params.mode,
-                                mode,
-                            );
-                        }
-
-                        tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Toe"))
-                            .range(1.0..=3.0)
-                            .speed(0.005)
-                            .build(&ui, &mut tonemapper_params.toe);
-
-                        tonemapper_dirty |=
-                            imgui::Drag::new(imgui::im_str!("Tonemapper - Shoulder"))
-                                .range(0.5..=2.0)
-                                .speed(0.005)
-                                .build(&ui, &mut tonemapper_params.shoulder);
-
-                        tonemapper_dirty |=
-                            imgui::Drag::new(imgui::im_str!("Tonemapper - Max Luminance"))
-                                .range(0.0..=30.0)
-                                .speed(0.1)
-                                .build(&ui, &mut tonemapper_params.max_luminance);
-
-                        tonemapper_dirty |=
-                            imgui::Drag::new(imgui::im_str!("Tonemapper - Grey In"))
-                                .range(0.0..=tonemapper_params.max_luminance / 2.0)
-                                .speed(0.05)
-                                .build(&ui, &mut tonemapper_params.grey_in);
-
-                        tonemapper_dirty |=
-                            imgui::Drag::new(imgui::im_str!("Tonemapper - Grey Out"))
-                                .range(0.0..=0.5)
-                                .speed(0.005)
-                                .build(&ui, &mut tonemapper_params.grey_out);
+                        let (settings_dirty, tonemapper_dirty) = draw_ui(
+                            &ui,
+                            &mut settings,
+                            &mut tonemapper_params,
+                            &mut render_sun_dir,
+                        );
 
                         if settings_dirty {
                             queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
@@ -492,249 +416,6 @@ fn framebuffer_and_tonemapper_bind_group(
     });
 
     (framebuffer_texture, tonemapper_bind_group)
-}
-
-fn load_scene(
-    bytes: &[u8],
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    texture_bgl: &wgpu::BindGroupLayout,
-) -> anyhow::Result<Scene> {
-    let gltf = gltf::Gltf::from_slice(bytes)?;
-
-    let buffer_blob = gltf.blob.as_ref().unwrap();
-
-    let node_tree = NodeTree::new(&gltf);
-
-    let (camera_node_index, camera) = gltf
-        .nodes()
-        .find_map(|node| node.camera().map(|camera| (node.index(), camera)))
-        .unwrap();
-
-    let camera_perspective = match camera.projection() {
-        gltf::camera::Projection::Perspective(perspective) => perspective,
-        _ => panic!(),
-    };
-
-    let camera_transform = node_tree.transform_of(camera_node_index);
-
-    let camera_eye = camera_transform.extract_translation();
-    let camera_rotor = camera_transform.extract_rotation();
-    let camera_view_direction = camera_rotor * -Vec3::unit_z();
-    let camera_up = camera_rotor * Vec3::unit_y();
-    let camera_view = Mat4::look_at(camera_eye, camera_eye + camera_view_direction, camera_up);
-
-    let mut image_map = HashMap::new();
-
-    for image in gltf.images() {
-        image_map.insert(
-            image.name().unwrap(),
-            load_image(&image, buffer_blob, device, queue)?,
-        );
-    }
-
-    let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("texture bind group"),
-        layout: texture_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&image_map.get("normals").unwrap()),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(&image_map.get("details").unwrap()),
-            },
-        ],
-    });
-
-    let (sun_node_index, sun) = gltf
-        .nodes()
-        .find_map(|node| node.light().map(|light| (node.index(), light)))
-        .unwrap();
-    let sun_rotor = node_tree.transform_of(sun_node_index).extract_rotation();
-
-    let sun = Sun {
-        // Lighting uses the -Z axis.
-        // https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Khronos/KHR_lights_punctual/README.md#directional
-        facing: Vec3A::new(sun_rotor * Vec3::unit_z()),
-        output: Vec3::from(sun.color()) * sun.intensity(),
-    };
-
-    let sun_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("sun buffer"),
-        usage: wgpu::BufferUsage::UNIFORM,
-        contents: bytemuck::bytes_of(&sun),
-    });
-
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-
-    for mesh in gltf.meshes() {
-        for primitive in mesh.primitives() {
-            let reader = primitive.reader(|buffer| {
-                assert_eq!(buffer.index(), 0);
-                Some(buffer_blob)
-            });
-
-            let num_vertices = vertices.len() as u32;
-
-            indices.extend(
-                reader
-                    .read_indices()
-                    .unwrap()
-                    .into_u32()
-                    .map(|index| index + num_vertices),
-            );
-
-            let positions = reader.read_positions().unwrap();
-            let uvs = reader.read_tex_coords(0).unwrap().into_f32();
-            let normals = reader.read_normals().unwrap();
-            let tangents = reader.read_tangents().unwrap();
-
-            positions.zip(uvs).zip(normals).zip(tangents).for_each(
-                |(((position, uv), normal), tangent)| {
-                    vertices.push(Vertex {
-                        position: position.into(),
-                        uv: uv.into(),
-                        normal: normal.into(),
-                        tangent: tangent.into(),
-                    });
-                },
-            )
-        }
-    }
-
-    let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("vertices"),
-        usage: wgpu::BufferUsage::VERTEX,
-        contents: bytemuck::cast_slice(&vertices),
-    });
-
-    let num_indices = indices.len() as u32;
-
-    let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("indices"),
-        usage: wgpu::BufferUsage::INDEX,
-        contents: bytemuck::cast_slice(&indices),
-    });
-
-    Ok(Scene {
-        camera_y_fov: camera_perspective.yfov(),
-        camera_z_near: camera_perspective.znear(),
-        camera_view,
-        texture_bind_group,
-        sun_buffer,
-        vertices,
-        indices,
-        num_indices,
-        camera_eye,
-    })
-}
-
-fn load_image(
-    image: &gltf::Image,
-    buffer_blob: &[u8],
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-) -> anyhow::Result<wgpu::TextureView> {
-    let image_view = match image.source() {
-        gltf::image::Source::View { view, .. } => view,
-        _ => panic!(),
-    };
-
-    let image_start = image_view.offset();
-    let image_end = image_start + image_view.length();
-    let image_bytes = &buffer_blob[image_start..image_end];
-
-    let name = image.name().unwrap();
-
-    let image = image::load_from_memory_with_format(image_bytes, image::ImageFormat::Png)?;
-
-    let image = match image {
-        image::DynamicImage::ImageRgba8(image) => image,
-        _ => panic!(),
-    };
-
-    Ok(device
-        .create_texture_with_data(
-            queue,
-            &wgpu::TextureDescriptor {
-                label: Some(name),
-                size: wgpu::Extent3d {
-                    width: image.width(),
-                    height: image.height(),
-                    depth: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsage::COPY_DST | wgpu::TextureUsage::SAMPLED,
-            },
-            &*image,
-        )
-        .create_view(&wgpu::TextureViewDescriptor::default()))
-}
-
-struct Scene {
-    camera_y_fov: f32,
-    camera_z_near: f32,
-    camera_view: Mat4,
-    camera_eye: Vec3,
-    texture_bind_group: wgpu::BindGroup,
-    sun_buffer: wgpu::Buffer,
-    vertices: wgpu::Buffer,
-    indices: wgpu::Buffer,
-    num_indices: u32,
-}
-
-impl Scene {
-    fn create_camera(&self, width: u32, height: u32) -> primitives::Camera {
-        let perspective = ultraviolet::projection::perspective_infinite_z_wgpu_dx(
-            self.camera_y_fov,
-            width as f32 / height as f32,
-            self.camera_z_near,
-        );
-
-        let perspective_view = perspective * self.camera_view;
-
-        primitives::Camera {
-            perspective_view,
-            position: self.camera_eye,
-        }
-    }
-}
-
-struct NodeTree {
-    inner: Vec<(Mat4, usize)>,
-}
-
-impl NodeTree {
-    fn new(gltf: &gltf::Gltf) -> Self {
-        let mut inner = vec![(Mat4::identity(), usize::max_value()); gltf.nodes().count()];
-
-        for node in gltf.nodes() {
-            inner[node.index()].0 = node.transform().matrix().into();
-            for child in node.children() {
-                inner[child.index()].1 = node.index();
-            }
-        }
-
-        Self { inner }
-    }
-
-    fn transform_of(&self, mut index: usize) -> Mat4 {
-        let mut transform_sum = Mat4::identity();
-
-        while index != usize::max_value() {
-            let (transform, parent_index) = self.inner[index];
-            transform_sum = transform * transform_sum;
-            index = parent_index;
-        }
-
-        transform_sum
-    }
 }
 
 /// All the permement resources that we can load before creating a window.
@@ -989,4 +670,85 @@ impl TonemapperParams {
 
         primitives::TonemapperSettings { a, b, c, d, mode }
     }
+}
+
+fn draw_ui(
+    ui: &imgui::Ui,
+    settings: &mut primitives::Settings,
+    tonemapper_params: &mut TonemapperParams,
+    render_sun_dir: &mut bool,
+) -> (bool, bool) {
+    let mut settings_dirty = false;
+    let mut tonemapper_dirty = false;
+
+    let mut base_colour: [f32; 3] = settings.base_colour.into();
+
+    if imgui::ColorPicker::new(imgui::im_str!("Colour"), &mut base_colour).build(&ui) {
+        settings.base_colour = base_colour.into();
+        settings_dirty = true;
+    }
+
+    let mut ambient_lighting: [f32; 3] = settings.ambient_lighting.into();
+
+    if imgui::ColorPicker::new(imgui::im_str!("Ambient Lighting"), &mut ambient_lighting).build(&ui)
+    {
+        settings.ambient_lighting = ambient_lighting.into();
+        settings_dirty = true;
+    }
+
+    settings_dirty |= imgui::Drag::new(imgui::im_str!("Detail Scale"))
+        .range(0.0..=10.0)
+        .speed(0.05)
+        .build(&ui, &mut settings.detail_map_scale);
+
+    settings_dirty |= imgui::Drag::new(imgui::im_str!("Roughness"))
+        .range(0.0..=1.0)
+        .speed(0.005)
+        .build(&ui, &mut settings.roughness);
+
+    settings_dirty |= imgui::Drag::new(imgui::im_str!("Specular Factor"))
+        .range(0.0..=2.0)
+        .speed(0.005)
+        .build(&ui, &mut settings.specular_factor);
+
+    for (mode, index) in primitives::Mode::iter() {
+        settings_dirty |= ui.radio_button(&imgui::im_str!("{:?}", mode), &mut settings.mode, index);
+    }
+
+    ui.checkbox(imgui::im_str!("Render Sun Direction"), render_sun_dir);
+
+    for mode in primitives::TonemapperMode::iter() {
+        tonemapper_dirty |= ui.radio_button(
+            &imgui::im_str!("Tonemapper {:?}", mode),
+            &mut tonemapper_params.mode,
+            mode,
+        );
+    }
+
+    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Toe"))
+        .range(1.0..=3.0)
+        .speed(0.005)
+        .build(&ui, &mut tonemapper_params.toe);
+
+    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Shoulder"))
+        .range(0.5..=2.0)
+        .speed(0.005)
+        .build(&ui, &mut tonemapper_params.shoulder);
+
+    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Max Luminance"))
+        .range(0.0..=30.0)
+        .speed(0.1)
+        .build(&ui, &mut tonemapper_params.max_luminance);
+
+    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Grey In"))
+        .range(0.0..=tonemapper_params.max_luminance / 2.0)
+        .speed(0.05)
+        .build(&ui, &mut tonemapper_params.grey_in);
+
+    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Grey Out"))
+        .range(0.0..=0.5)
+        .speed(0.005)
+        .build(&ui, &mut tonemapper_params.grey_out);
+
+    (settings_dirty, tonemapper_dirty)
 }
