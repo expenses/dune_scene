@@ -1,12 +1,12 @@
 #version 450
 
-struct ShipPosition {
-    vec3 translation;
-    float y_rotation;
+struct Ship {
+    vec3 position;
+    float facing;
 };
 
 layout(set = 0, binding = 0) buffer Ships {
-    ShipPosition positions[];
+    Ship ships[];
 };
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -14,10 +14,15 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint index = gl_GlobalInvocationID.x;
 
-    ShipPosition ship = positions[index];
+    if (index >= ships.length()) {
+        return;
+    }
 
-    ship.y_rotation += 0.01;
+    Ship ship = ships[index];
 
-    positions[index] = ship;
+    ship.facing += 0.01;
+    ship.position += vec3(cos(ship.facing), 0.0, sin(ship.facing)) * 0.005;
+
+    ships[index] = ship;
 }
 
