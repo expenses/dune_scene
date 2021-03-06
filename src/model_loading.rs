@@ -4,10 +4,10 @@ use ultraviolet::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 pub struct Scene {
-    pub camera_y_fov: f32,
-    pub camera_z_near: f32,
-    pub camera_view: Mat4,
-    pub camera_eye: Vec3,
+    camera_y_fov: f32,
+    camera_z_near: f32,
+    camera_view: Mat4,
+    camera_eye: Vec3,
     pub texture_bind_group: wgpu::BindGroup,
     pub sun_buffer: wgpu::Buffer,
     pub vertices: wgpu::Buffer,
@@ -247,5 +247,86 @@ impl NodeTree {
         }
 
         transform_sum
+    }
+}
+
+pub struct Ship {
+    pub vertices: wgpu::Buffer,
+    pub indices: wgpu::Buffer,
+    pub num_indices: u32,
+}
+
+impl Ship {
+    pub fn load(bytes: &[u8], device: &wgpu::Device, queue: &wgpu::Queue) -> anyhow::Result<Self> {
+        let gltf = gltf::Gltf::from_slice(bytes)?;
+
+        let buffer_blob = gltf.blob.as_ref().unwrap();
+
+        let node_tree = NodeTree::new(&gltf);
+
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for (node, mesh) in gltf
+            .nodes()
+            .filter_map(|node| node.mesh().map(|mesh| (node, mesh)))
+        {
+            let transform = node_tree.transform_of(node.index());
+
+            for primitive in mesh.primitives() {
+                let reader = primitive.reader(|buffer| {
+                    assert_eq!(buffer.index(), 0);
+                    Some(buffer_blob)
+                });
+
+                let num_vertices = vertices.len() as u32;
+
+                indices.extend(
+                    reader
+                        .read_indices()
+                        .unwrap()
+                        .into_u32()
+                        .map(|index| index + num_vertices),
+                );
+
+                let positions = reader.read_positions().unwrap();
+                let uvs = reader.read_tex_coords(0).unwrap().into_f32();
+                let normals = reader.read_normals().unwrap();
+                let tangents = reader.read_tangents().unwrap();
+
+                positions.zip(uvs).zip(normals).zip(tangents).for_each(
+                    |(((position, uv), normal), tangent)| {
+                        let position: Vec3 = position.into();
+
+                        vertices.push(Vertex {
+                            position: transform.transform_vec3(position),
+                            uv: uv.into(),
+                            normal: normal.into(),
+                            tangent: tangent.into(),
+                        });
+                    },
+                )
+            }
+        }
+
+        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("vertices"),
+            usage: wgpu::BufferUsage::VERTEX,
+            contents: bytemuck::cast_slice(&vertices),
+        });
+
+        let num_indices = indices.len() as u32;
+
+        let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("indices"),
+            usage: wgpu::BufferUsage::INDEX,
+            contents: bytemuck::cast_slice(&indices),
+        });
+
+        Ok(Self {
+            vertices,
+            indices,
+            num_indices,
+        })
     }
 }

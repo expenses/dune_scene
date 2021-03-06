@@ -37,23 +37,8 @@ vec3 blend_normals(vec3 a, vec3 b) {
     return normalize(vec3(xs, ys, a.z)) * 2.0 - 1.0;
 }
 
-float clamped_dot(vec3 a, vec3 b) {
-    return max(dot(a, b), 0.0);
-}
-
 vec3 normal_to_view_space(vec3 normal) {
     return normal * 0.5 + 0.5;
-}
-
-// See https://github.com/KhronosGroup/glTF-Sample-Viewer/blob/master/source/Renderer/shaders/brdf.glsl
-vec3 compute_f90(vec3 f0) {
-    // Compute reflectance.
-    float reflectance = max(max(f0.r, f0.g), f0.b);
-
-    // Anything less than 2% is physically impossible and is instead considered
-    // to be shadowing. Compare to "Real-Time-Rendering" 4th editon on page 325.
-    vec3 f90 = vec3(clamp(reflectance * 50.0, 0.0, 1.0));
-    return f90;
 }
 
 void main() {
