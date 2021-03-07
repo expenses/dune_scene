@@ -193,15 +193,20 @@ async fn run() -> anyhow::Result<()> {
 
     let pipelines = Pipelines::new(&device, display_format, &resources, &cascaded_shadow_maps);
 
+    #[cfg(not(feature = "wasm"))]
     let mut imgui = imgui::Context::create();
+    #[cfg(not(feature = "wasm"))]
     let mut imgui_platform = imgui_winit_support::WinitPlatform::init(&mut imgui);
+    #[cfg(not(feature = "wasm"))]
     imgui_platform.attach_window(
         imgui.io_mut(),
         &window,
         imgui_winit_support::HiDpiMode::Default,
     );
+    #[cfg(not(feature = "wasm"))]
     imgui.set_ini_filename(None);
 
+    #[cfg(not(feature = "wasm"))]
     let mut imgui_renderer = imgui_wgpu::Renderer::new(
         &mut imgui,
         &device,
@@ -261,6 +266,7 @@ async fn run() -> anyhow::Result<()> {
     use winit::event_loop::*;
 
     event_loop.run(move |event, _, control_flow| {
+        #[cfg(not(feature = "wasm"))]
         imgui_platform.handle_event(imgui.io_mut(), &window, &event);
 
         match event {
@@ -464,66 +470,72 @@ async fn run() -> anyhow::Result<()> {
 
                     drop(render_pass);
 
-                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("ui render pass"),
-                        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                            attachment: &frame.output.view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Load,
-                                store: true,
-                            },
-                        }],
-                        depth_stencil_attachment: None,
-                    });
-
-                    imgui_platform
-                        .prepare_frame(imgui.io_mut(), &window)
-                        .expect("Failed to prepare frame");
-                    let ui = imgui.frame();
-
+                    #[cfg(not(feature = "wasm"))]
                     {
-                        let dirty = draw_ui(
-                            &ui,
-                            &mut settings,
-                            &mut tonemapper_params,
-                            &mut render_sun_dir,
-                            &mut move_ships,
-                            &mut render_ships,
-                            &mut cascade_split_lambda,
-                        );
+                        let mut render_pass =
+                            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                label: Some("ui render pass"),
+                                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                                    attachment: &frame.output.view,
+                                    resolve_target: None,
+                                    ops: wgpu::Operations {
+                                        load: wgpu::LoadOp::Load,
+                                        store: true,
+                                    },
+                                }],
+                                depth_stencil_attachment: None,
+                            });
 
-                        if dirty.settings {
-                            queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
-                        }
+                        imgui_platform
+                            .prepare_frame(imgui.io_mut(), &window)
+                            .expect("Failed to prepare frame");
+                        let ui = imgui.frame();
 
-                        if dirty.tonemapper {
-                            queue.write_buffer(
-                                &tonemapper_uniform_buffer,
-                                0,
-                                bytemuck::bytes_of(&tonemapper_params.convert()),
+                        {
+                            let dirty = draw_ui(
+                                &ui,
+                                &mut settings,
+                                &mut tonemapper_params,
+                                &mut render_sun_dir,
+                                &mut move_ships,
+                                &mut render_ships,
+                                &mut cascade_split_lambda,
                             );
+
+                            if dirty.settings {
+                                queue.write_buffer(
+                                    &settings_buffer,
+                                    0,
+                                    bytemuck::bytes_of(&settings),
+                                );
+                            }
+
+                            if dirty.tonemapper {
+                                queue.write_buffer(
+                                    &tonemapper_uniform_buffer,
+                                    0,
+                                    bytemuck::bytes_of(&tonemapper_params.convert()),
+                                );
+                            }
+
+                            if dirty.csm {
+                                cascaded_shadow_maps.update_params(
+                                    cascaded_shadow_maps::CameraParams {
+                                        projection_view: camera.perspective_view,
+                                        far_clip: scene.camera_z_far,
+                                        near_clip: scene.camera_z_near,
+                                    },
+                                    scene.sun_facing,
+                                    cascade_split_lambda,
+                                    &queue,
+                                );
+                            };
+
+                            imgui_renderer
+                                .render(ui.render(), &queue, &device, &mut render_pass)
+                                .expect("Rendering failed");
                         }
-
-                        if dirty.csm {
-                            cascaded_shadow_maps.update_params(
-                                cascaded_shadow_maps::CameraParams {
-                                    projection_view: camera.perspective_view,
-                                    far_clip: scene.camera_z_far,
-                                    near_clip: scene.camera_z_near,
-                                },
-                                scene.sun_facing,
-                                cascade_split_lambda,
-                                &queue,
-                            );
-                        };
-
-                        imgui_renderer
-                            .render(ui.render(), &queue, &device, &mut render_pass)
-                            .expect("Rendering failed");
                     }
-
-                    drop(render_pass);
 
                     queue.submit(Some(encoder.finish()));
                 }
@@ -1068,6 +1080,7 @@ impl TonemapperParams {
     }
 }
 
+#[cfg(not(feature = "wasm"))]
 fn draw_ui(
     ui: &imgui::Ui,
     settings: &mut primitives::Settings,
