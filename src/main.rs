@@ -353,12 +353,6 @@ async fn run() -> anyhow::Result<()> {
                                 ),
                             });
 
-                        render_pass.set_pipeline(&pipelines.scene_shadows_pipeline);
-                        render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
-                        render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
-                        render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
-                        render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
-
                         if render_ships {
                             render_pass.set_pipeline(&pipelines.ship_shadows_pipeline);
                             render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
@@ -367,6 +361,12 @@ async fn run() -> anyhow::Result<()> {
                             render_pass.set_index_buffer(ship.indices.slice(..), INDEX_FORMAT);
                             render_pass.draw_indexed(0..ship.num_indices, 0, 0..num_ships);
                         }
+
+                        render_pass.set_pipeline(&pipelines.scene_shadows_pipeline);
+                        render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
+                        render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
+                        render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
+                        render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
                     }
 
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -391,14 +391,6 @@ async fn run() -> anyhow::Result<()> {
                         ),
                     });
 
-                    render_pass.set_pipeline(&pipelines.scene_pipeline);
-                    render_pass.set_bind_group(0, &bind_group, &[]);
-                    render_pass.set_bind_group(1, &scene.texture_bind_group, &[]);
-                    render_pass.set_bind_group(2, cascaded_shadow_maps.rendering_bind_group(), &[]);
-                    render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
-                    render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
-                    render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
-
                     if render_ships {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);
                         render_pass.set_bind_group(0, &bind_group, &[]);
@@ -412,6 +404,14 @@ async fn run() -> anyhow::Result<()> {
                         render_pass.set_index_buffer(ship.indices.slice(..), INDEX_FORMAT);
                         render_pass.draw_indexed(0..ship.num_indices, 0, 0..num_ships);
                     }
+
+                    render_pass.set_pipeline(&pipelines.scene_pipeline);
+                    render_pass.set_bind_group(0, &bind_group, &[]);
+                    render_pass.set_bind_group(1, &scene.texture_bind_group, &[]);
+                    render_pass.set_bind_group(2, cascaded_shadow_maps.rendering_bind_group(), &[]);
+                    render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
+                    render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
+                    render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
 
                     drop(render_pass);
 
