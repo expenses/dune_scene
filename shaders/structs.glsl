@@ -29,6 +29,7 @@ struct Ship {
     vec3 position;
     float facing;
     mat3 y_rotation_matrix;
+    float rotation_speed;
 };
 
 struct Sun {

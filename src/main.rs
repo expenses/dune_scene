@@ -104,7 +104,8 @@ async fn run() -> anyhow::Result<()> {
                 rng.gen_range(-2.0..=2.0),
             ),
             y_rotation: rng.gen_range(0.0..360.0_f32).to_radians(),
-            y_rotation_matrix: Default::default(),
+            rotation_speed: rng.gen_range(-0.02..=0.02),
+            ..Default::default()
         })
         .collect();
 
