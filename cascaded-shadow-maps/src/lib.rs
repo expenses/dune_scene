@@ -5,6 +5,7 @@ pub struct CascadedShadowMaps {
     light_projection_buffers: [wgpu::Buffer; 3],
     light_projection_bind_groups: [wgpu::BindGroup; 3],
     projection_bgl: wgpu::BindGroupLayout,
+    uniform_buffer: wgpu::Buffer,
 }
 
 impl CascadedShadowMaps {
@@ -73,6 +74,13 @@ impl CascadedShadowMaps {
             })
         };
 
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cascaded shadow map - uniform buffer"),
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            size: std::mem::size_of::<Uniform>() as u64,
+            mapped_at_creation: false,
+        });
+
         Self {
             textures: [texture("near"), texture("middle"), texture("far")],
             light_projection_bind_groups: [
@@ -82,6 +90,7 @@ impl CascadedShadowMaps {
             ],
             light_projection_buffers: projection_buffers,
             projection_bgl,
+            uniform_buffer,
         }
     }
 
@@ -97,6 +106,10 @@ impl CascadedShadowMaps {
         &self.projection_bgl
     }
 
+    pub fn uniform_buffer(&self) -> &wgpu::Buffer {
+        &self.uniform_buffer
+    }
+
     pub fn update_params(
         &self,
         camera: CameraParams,
@@ -104,13 +117,15 @@ impl CascadedShadowMaps {
         cascade_split_lambda: f32,
         queue: &wgpu::Queue,
     ) {
-        let matrices = update_cascades(camera, cascade_split_lambda, origin_to_light);
+        let uniform = update_cascades(camera, cascade_split_lambda, origin_to_light);
+
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
 
         for i in 0..3 {
             queue.write_buffer(
                 &self.light_projection_buffers[i],
                 0,
-                bytemuck::bytes_of(&matrices[i]),
+                bytemuck::bytes_of(&uniform.matrices[i]),
             );
         }
     }
@@ -122,12 +137,19 @@ pub struct CameraParams {
     pub far_clip: f32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct Uniform {
+    matrices: [Mat4; 3],
+    split_depths: [f32; 3],
+}
+
 // https://github.com/SaschaWillems/Vulkan/blob/5db9781d529467c4474bbc957ab5f1ee06126cf4/examples/shadowmappingcascade/shadowmappingcascade.cpp#L634-L638
 fn update_cascades(
     camera: CameraParams,
     cascade_split_lambda: f32,
     origin_to_light: Vec3,
-) -> [Mat4; 3] {
+) -> Uniform {
     let clip_range = camera.far_clip - camera.near_clip;
 
     let min_z = camera.near_clip;
@@ -146,8 +168,6 @@ fn update_cascades(
         (d - camera.near_clip) / clip_range
     };
     let cascade_splits = [cascade_split(0), cascade_split(1), cascade_split(2)];
-
-    println!("{:?}", cascade_splits);
 
     let inverse_camera_projection_view = camera.projection_view.inversed();
 
@@ -213,12 +233,18 @@ fn update_cascades(
             max_extents.z - min_extents.z,
         );
 
-        light_ortho_matrix * light_view_matrix
+        let matrix = light_ortho_matrix * light_view_matrix;
+        let split_depth = (camera.near_clip + split_dist * clip_range) * -1.0;
+
+        (matrix, split_depth)
     };
 
-    [
-        calculate_matrix(0.0, cascade_splits[0]),
-        calculate_matrix(cascade_splits[0], cascade_splits[1]),
-        calculate_matrix(cascade_splits[1], cascade_splits[2]),
-    ]
+    let (matrix_1, split_depth_1) = calculate_matrix(0.0, cascade_splits[0]);
+    let (matrix_2, split_depth_2) = calculate_matrix(cascade_splits[0], cascade_splits[1]);
+    let (matrix_3, split_depth_3) = calculate_matrix(cascade_splits[1], cascade_splits[2]);
+
+    Uniform {
+        matrices: [matrix_1, matrix_2, matrix_3],
+        split_depths: [split_depth_1, split_depth_2, split_depth_3],
+    }
 }

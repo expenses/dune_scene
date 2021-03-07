@@ -1,14 +1,14 @@
 #version 450
 
-layout(set = 0, binding = 0) uniform Camera {
-    mat4 perspective_view;
-    vec3 camera_position;
+#include "structs.glsl"
+
+layout(set = 0, binding = 0) uniform CameraUniform {
+    Camera camera;
 };
 
-layout(set = 0, binding = 1) uniform Sun {
-    vec3 facing;
-    vec3 light_output;
-} sun;
+layout(set = 0, binding = 1) uniform SunUniform {
+    Sun sun;
+};
 
 layout(location = 0) out vec4 colour;
 
@@ -20,5 +20,5 @@ void main() {
     int multiplier = gl_VertexIndex * (2 * scale) - (1 * scale);
     vec3 position = sun.facing * multiplier;
 
-    gl_Position = perspective_view * vec4(position, 1.0);
+    gl_Position = camera.perspective_view * vec4(position, 1.0);
 }

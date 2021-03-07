@@ -2,29 +2,31 @@
 
 #include "brdf.glsl"
 #include "utils.glsl"
+#include "structs.glsl"
+
+#include "shadows.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec2 in_uv;
 layout(location = 2) in vec4 in_tangent;
 layout(location = 3) in vec3 in_camera_dir;
+layout(location = 4) in vec3 in_view_pos;
 
 layout(location = 0) out vec4 out_colour;
 
-layout(set = 0, binding = 1) uniform Sun {
-    vec3 facing;
-    vec3 light_output;
-} sun;
+layout(set = 0, binding = 1) uniform SunUniform {
+    Sun sun;
+};
 
 layout(set = 0, binding = 2) uniform sampler u_sampler;
 
-layout(set = 0, binding = 3) uniform Settings {
-    vec3 base_colour;
-    float detail_map_scale;
-    vec3 ambient_lighting;
-    float roughness;
-    float specular_factor;
-    uint mode;
-} settings;
+layout(set = 0, binding = 3) uniform SettingsUniform {
+    Settings settings;
+};
+
+layout(set = 0, binding = 4) uniform CascadedShadowMapUniform {
+    CSM csm;
+};
 
 layout(set = 1, binding = 0) uniform texture2D u_normals_texture;
 layout(set = 1, binding = 1) uniform texture2D u_details_texture;
@@ -83,18 +85,22 @@ void main() {
     vec3 colour = settings.ambient_lighting + diffuse + specular;
 
     switch (settings.mode) {
-        case 0:
+        case MODE_FULL:
             break;
-        case 1:
+        case MODE_NORMALS:
             // To compare with the normals in blender, we need to shift the
             // normals from Y space to Z space.
             colour = normal_to_view_space(normal.xzy * vec3(1, -1, 1));
             break;
-        case 2:
+        case MODE_NOISE:
             colour = vec3(noise);
             break;
-        case 3:
+        case MODE_HUE_NOISE:
             colour = hue_noise;
+            break;
+        case MODE_SHADOW_CASCADE:
+            uint cascade_index = cascade_index(in_view_pos.z, csm.split_depths);
+            colour = debug_colour_by_cascade(colour, cascade_index);
             break;
     }
 

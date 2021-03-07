@@ -37,6 +37,7 @@ pub struct Vertex {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Camera {
     pub perspective_view: Mat4,
+    pub view: Mat4,
     pub position: Vec3,
 }
 
@@ -57,11 +58,12 @@ pub enum Mode {
     Normals,
     Noise,
     HueNoise,
+    ShadowCascade,
 }
 
 impl Mode {
     pub fn iter() -> impl Iterator<Item = (Self, u32)> {
-        enumerate(&[Self::Full, Self::Normals, Self::Noise, Self::HueNoise])
+        enumerate(&[Self::Full, Self::Normals, Self::Noise, Self::HueNoise, Self::ShadowCascade])
     }
 }
 

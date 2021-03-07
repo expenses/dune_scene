@@ -15,6 +15,7 @@ glslc shaders/fullscreen_tri.vert -o shaders/compiled/fullscreen_tri.vert.spv
 glslc shaders/tonemap.frag -o shaders/compiled/tonemap.frag.spv
 
 glslc shaders/scene_shadows.vert -o shaders/compiled/scene_shadows.vert.spv
+glslc shaders/ship_shadows.vert -o shaders/compiled/ship_shadows.vert.spv
 
 glslc shaders/ship_movement.comp -o shaders/compiled/ship_movement.comp.spv
 
@@ -35,3 +36,4 @@ spirv-opt shaders/compiled/tonemap.frag.spv -O -o shaders/compiled/tonemap.frag.
 spirv-opt shaders/compiled/ship_movement.comp.spv -O -o shaders/compiled/ship_movement.comp.spv
 
 spirv-opt shaders/compiled/scene_shadows.vert.spv -O -o shaders/compiled/scene_shadows.vert.spv
+spirv-opt shaders/compiled/ship_shadows.vert.spv -O -o shaders/compiled/ship_shadows.vert.spv

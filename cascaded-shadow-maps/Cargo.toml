@@ -7,6 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytemuck = "1.5.1"
+bytemuck = { version = "1.5.1", features = ["derive"] }
 ultraviolet = { version = "0.7.5", features = ["bytemuck"] }
 wgpu = "0.7.0"

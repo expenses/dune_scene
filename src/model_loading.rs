@@ -176,6 +176,7 @@ impl Scene {
 
         primitives::Camera {
             perspective_view,
+            view: self.camera_view,
             position: self.camera_eye,
         }
     }

@@ -1,10 +1,6 @@
 #version 450
 
-struct Ship {
-    vec3 position;
-    float facing;
-    mat3 y_rotation_matrix;
-};
+#include "structs.glsl"
 
 layout(set = 0, binding = 0) buffer Ships {
     Ship ships[];

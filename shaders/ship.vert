@@ -1,5 +1,7 @@
 #version 450
 
+#include "structs.glsl"
+
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
@@ -10,35 +12,29 @@ layout(location = 0) out vec3 out_normal;
 //layout(location = 2) out vec4 out_tangent;
 layout(location = 1) out vec3 out_colour;
 layout(location = 2) out vec3 out_camera_dir;
+layout(location = 3) out vec3 out_view_pos;
 
-
-layout(set = 0, binding = 0) uniform Camera {
-    mat4 perspective_view;
-    vec3 camera_position;
+layout(set = 0, binding = 0) uniform CameraUniform {
+    Camera camera;
 };
 
-struct Transform {
-    vec3 translation;
-    float y_rotation;
-    mat3 y_rotation_matrix;
-};
-
-layout(set = 1, binding = 0) readonly buffer Transforms {
-    Transform transforms[];
+layout(set = 1, binding = 0) readonly buffer ShipTransforms {
+    Ship ship_transforms[];
 };
 
 void main() {
-    Transform transform = transforms[gl_InstanceIndex];
+    Ship ship_transform = ship_transforms[gl_InstanceIndex];
 
-    mat3 rotation_matrix = transform.y_rotation_matrix;
+    mat3 rotation_matrix = ship_transform.y_rotation_matrix;
 
-    vec3 transformed_pos = rotation_matrix * position + transform.translation;
+    vec3 transformed_pos = rotation_matrix * position + ship_transform.position;
 
     out_normal = rotation_matrix * normal;
     out_colour = out_normal;
     //out_uv = uv;
     //out_tangent = vec4(normal_transform * tangent.xyz, tangent.w);
-    out_camera_dir = camera_position - transformed_pos;
+    out_camera_dir = camera.position - transformed_pos;
+    out_view_pos = (camera.view * vec4(transformed_pos, 1.0)).xyz;
 
-    gl_Position = perspective_view * vec4(transformed_pos, 1.0);
+    gl_Position = camera.perspective_view * vec4(transformed_pos, 1.0);
 }

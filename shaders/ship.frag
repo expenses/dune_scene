@@ -2,24 +2,26 @@
 
 #include "brdf.glsl"
 #include "utils.glsl"
+#include "structs.glsl"
+
+#include "shadows.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_colour;
 layout(location = 2) in vec3 in_camera_dir;
+layout(location = 3) in vec3 in_view_pos;
 
-layout(set = 0, binding = 1) uniform Sun {
-    vec3 facing;
-    vec3 light_output;
-} sun;
+layout(set = 0, binding = 1) uniform SunUniform {
+    Sun sun;
+};
 
-layout(set = 0, binding = 3) uniform Settings {
-    vec3 base_colour;
-    float detail_map_scale;
-    vec3 ambient_lighting;
-    float roughness;
-    float specular_factor;
-    uint mode;
-} settings;
+layout(set = 0, binding = 3) uniform SettingsUniform {
+    Settings settings;
+};
+
+layout(set = 0, binding = 4) uniform CascadedShadowMapUniform {
+    CSM csm;
+};
 
 layout(location = 0) out vec4 out_colour;
 
@@ -44,6 +46,11 @@ void main() {
         BRDF_lambertian(f0, f90, in_colour, VdotH);
 
     vec3 colour = settings.ambient_lighting * in_colour + diffuse;
+
+    if (settings.mode == MODE_SHADOW_CASCADE) {
+        uint cascade_index = cascade_index(in_view_pos.z, csm.split_depths);
+        colour = debug_colour_by_cascade(colour, cascade_index);
+    }
 
     out_colour = vec4(colour, 1.0);
 }

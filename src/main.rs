@@ -151,6 +151,10 @@ async fn run() -> anyhow::Result<()> {
                 binding: 3,
                 resource: settings_buffer.as_entire_binding(),
             },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: cascaded_shadow_maps.uniform_buffer().as_entire_binding(),
+            },
         ],
     });
 
@@ -326,6 +330,18 @@ async fn run() -> anyhow::Result<()> {
                         render_pass
                             .set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
                         render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
+
+                        if render_ships {
+                            render_pass.set_pipeline(&pipelines.ship_shadows_pipeline);
+                            render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
+                            render_pass.set_bind_group(1, &ship_bind_group, &[]);
+                            render_pass.set_vertex_buffer(0, ship.vertices.slice(..));
+                            render_pass.set_index_buffer(
+                                ship.indices.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            render_pass.draw_indexed(0..ship.num_indices, 0, 0..num_ships);
+                        }
                     }
 
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -438,13 +454,14 @@ async fn run() -> anyhow::Result<()> {
                     let ui = imgui.frame();
 
                     {
-                        let (settings_dirty, tonemapper_dirty) = draw_ui(
+                        let (settings_dirty, tonemapper_dirty, csm_dirty) = draw_ui(
                             &ui,
                             &mut settings,
                             &mut tonemapper_params,
                             &mut render_sun_dir,
                             &mut move_ships,
                             &mut render_ships,
+                            &mut cascade_split_lambda,
                         );
 
                         if settings_dirty {
@@ -458,6 +475,19 @@ async fn run() -> anyhow::Result<()> {
                                 bytemuck::bytes_of(&tonemapper_params.convert()),
                             );
                         }
+
+                        if csm_dirty {
+                            cascaded_shadow_maps.update_params(
+                                cascaded_shadow_maps::CameraParams {
+                                    projection_view: camera.perspective_view,
+                                    far_clip: scene.camera_z_far,
+                                    near_clip: scene.camera_z_near,
+                                },
+                                scene.sun_facing,
+                                cascade_split_lambda,
+                                &queue,
+                            );
+                        };
 
                         imgui_renderer
                             .render(ui.render(), &queue, &device, &mut render_pass)
@@ -600,6 +630,7 @@ impl RenderResources {
                     uniform(1, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::VERTEX),
                     sampler(2, wgpu::ShaderStage::FRAGMENT),
                     uniform(3, wgpu::ShaderStage::FRAGMENT),
+                    uniform(4, wgpu::ShaderStage::FRAGMENT),
                 ],
             }),
             texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -644,6 +675,7 @@ struct Pipelines {
     ship_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
     scene_shadows_pipeline: wgpu::RenderPipeline,
+    ship_shadows_pipeline: wgpu::RenderPipeline,
     ship_movement_pipeline: wgpu::ComputePipeline,
 }
 
@@ -895,6 +927,49 @@ impl Pipelines {
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
+            ship_shadows_pipeline: {
+                let ship_shadows_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("ship shadows pipeline layout"),
+                        bind_group_layouts: &[
+                            shadow_maps.light_projection_bind_group_layout(),
+                            &resources.ship_bgl,
+                        ],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_ship_shadows =
+                    wgpu::include_spirv!("../shaders/compiled/ship_shadows.vert.spv");
+                let vs_ship_shadows = device.create_shader_module(&vs_ship_shadows);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("ship shadows pipeline"),
+                    layout: Some(&ship_shadows_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_ship_shadows,
+                        entry_point: "main",
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<Vertex>() as u64,
+                            step_mode: wgpu::InputStepMode::Vertex,
+                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
+                        }],
+                    },
+                    fragment: None,
+                    primitive: wgpu::PrimitiveState {
+                        cull_mode: wgpu::CullMode::Back,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                        clamp_depth: false,
+                    }),
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
             ship_movement_pipeline: {
                 let ship_movement_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -964,7 +1039,8 @@ fn draw_ui(
     render_sun_dir: &mut bool,
     move_ships: &mut bool,
     render_ships: &mut bool,
-) -> (bool, bool) {
+    cascade_split_lambda: &mut f32,
+) -> (bool, bool, bool) {
     let mut settings_dirty = false;
     let mut tonemapper_dirty = false;
 
@@ -1007,6 +1083,11 @@ fn draw_ui(
     ui.checkbox(imgui::im_str!("Move Ships"), move_ships);
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
 
+    let csm_dirty = imgui::Drag::new(imgui::im_str!("Cascade Split Lambda"))
+        .range(0.0..=1.0)
+        .speed(0.005)
+        .build(&ui, cascade_split_lambda);
+
     for mode in primitives::TonemapperMode::iter() {
         tonemapper_dirty |= ui.radio_button(
             &imgui::im_str!("Tonemapper {:?}", mode),
@@ -1040,7 +1121,7 @@ fn draw_ui(
         .speed(0.005)
         .build(&ui, &mut tonemapper_params.grey_out);
 
-    (settings_dirty, tonemapper_dirty)
+    (settings_dirty, tonemapper_dirty, csm_dirty)
 }
 
 const fn dispatch_count(num: u32, group_size: u32) -> u32 {
