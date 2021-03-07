@@ -123,7 +123,7 @@ async fn run() -> anyhow::Result<()> {
     let width = window_size.width;
     let height = window_size.height;
 
-    let camera = scene.create_camera(width, height);
+    let mut camera = scene.create_camera(width, height);
 
     let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("camera buffer"),
@@ -263,7 +263,7 @@ async fn run() -> anyhow::Result<()> {
                     framebuffer_texture = new_framebuffer_texture;
                     tonemapper_bind_group = new_tonemapper_bind_group;
 
-                    let camera = scene.create_camera(width, height);
+                    camera = scene.create_camera(width, height);
                     queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
 
                     cascaded_shadow_maps.update_params(
@@ -456,7 +456,7 @@ async fn run() -> anyhow::Result<()> {
                     let ui = imgui.frame();
 
                     {
-                        let (settings_dirty, tonemapper_dirty, csm_dirty) = draw_ui(
+                        let dirty = draw_ui(
                             &ui,
                             &mut settings,
                             &mut tonemapper_params,
@@ -466,11 +466,11 @@ async fn run() -> anyhow::Result<()> {
                             &mut cascade_split_lambda,
                         );
 
-                        if settings_dirty {
+                        if dirty.settings {
                             queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
                         }
 
-                        if tonemapper_dirty {
+                        if dirty.tonemapper {
                             queue.write_buffer(
                                 &tonemapper_uniform_buffer,
                                 0,
@@ -478,7 +478,7 @@ async fn run() -> anyhow::Result<()> {
                             );
                         }
 
-                        if csm_dirty {
+                        if dirty.csm {
                             cascaded_shadow_maps.update_params(
                                 cascaded_shadow_maps::CameraParams {
                                     projection_view: camera.perspective_view,
@@ -1049,15 +1049,14 @@ fn draw_ui(
     move_ships: &mut bool,
     render_ships: &mut bool,
     cascade_split_lambda: &mut f32,
-) -> (bool, bool, bool) {
-    let mut settings_dirty = false;
-    let mut tonemapper_dirty = false;
+) -> DirtyObjects {
+    let mut dirty = DirtyObjects::default();
 
     let mut base_colour: [f32; 3] = settings.base_colour.into();
 
     if imgui::ColorPicker::new(imgui::im_str!("Colour"), &mut base_colour).build(&ui) {
         settings.base_colour = base_colour.into();
-        settings_dirty = true;
+        dirty.settings = true;
     }
 
     let mut ambient_lighting: [f32; 3] = settings.ambient_lighting.into();
@@ -1065,26 +1064,26 @@ fn draw_ui(
     if imgui::ColorPicker::new(imgui::im_str!("Ambient Lighting"), &mut ambient_lighting).build(&ui)
     {
         settings.ambient_lighting = ambient_lighting.into();
-        settings_dirty = true;
+        dirty.settings = true;
     }
 
-    settings_dirty |= imgui::Drag::new(imgui::im_str!("Detail Scale"))
+    dirty.settings |= imgui::Drag::new(imgui::im_str!("Detail Scale"))
         .range(0.0..=10.0)
         .speed(0.05)
         .build(&ui, &mut settings.detail_map_scale);
 
-    settings_dirty |= imgui::Drag::new(imgui::im_str!("Roughness"))
+    dirty.settings |= imgui::Drag::new(imgui::im_str!("Roughness"))
         .range(0.0..=1.0)
         .speed(0.005)
         .build(&ui, &mut settings.roughness);
 
-    settings_dirty |= imgui::Drag::new(imgui::im_str!("Specular Factor"))
+    dirty.settings |= imgui::Drag::new(imgui::im_str!("Specular Factor"))
         .range(0.0..=2.0)
         .speed(0.005)
         .build(&ui, &mut settings.specular_factor);
 
     for (mode, index) in primitives::Mode::iter() {
-        settings_dirty |= ui.radio_button(&imgui::im_str!("{:?}", mode), &mut settings.mode, index);
+        dirty.settings |= ui.radio_button(&imgui::im_str!("{:?}", mode), &mut settings.mode, index);
     }
 
     ui.checkbox(imgui::im_str!("Render Sun Direction"), render_sun_dir);
@@ -1092,45 +1091,52 @@ fn draw_ui(
     ui.checkbox(imgui::im_str!("Move Ships"), move_ships);
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
 
-    let csm_dirty = imgui::Drag::new(imgui::im_str!("Cascade Split Lambda"))
+    dirty.csm |= imgui::Drag::new(imgui::im_str!("Cascade Split Lambda"))
         .range(0.0..=1.0)
         .speed(0.005)
         .build(&ui, cascade_split_lambda);
 
     for mode in primitives::TonemapperMode::iter() {
-        tonemapper_dirty |= ui.radio_button(
+        dirty.tonemapper |= ui.radio_button(
             &imgui::im_str!("Tonemapper {:?}", mode),
             &mut tonemapper_params.mode,
             mode,
         );
     }
 
-    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Toe"))
+    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Toe"))
         .range(1.0..=3.0)
         .speed(0.005)
         .build(&ui, &mut tonemapper_params.toe);
 
-    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Shoulder"))
+    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Shoulder"))
         .range(0.5..=2.0)
         .speed(0.005)
         .build(&ui, &mut tonemapper_params.shoulder);
 
-    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Max Luminance"))
+    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Max Luminance"))
         .range(0.0..=30.0)
         .speed(0.1)
         .build(&ui, &mut tonemapper_params.max_luminance);
 
-    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Grey In"))
+    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Grey In"))
         .range(0.0..=tonemapper_params.max_luminance / 2.0)
         .speed(0.05)
         .build(&ui, &mut tonemapper_params.grey_in);
 
-    tonemapper_dirty |= imgui::Drag::new(imgui::im_str!("Tonemapper - Grey Out"))
+    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Grey Out"))
         .range(0.0..=0.5)
         .speed(0.005)
         .build(&ui, &mut tonemapper_params.grey_out);
 
-    (settings_dirty, tonemapper_dirty, csm_dirty)
+    dirty
+}
+
+#[derive(Default)]
+struct DirtyObjects {
+    settings: bool,
+    tonemapper: bool,
+    csm: bool,
 }
 
 const fn dispatch_count(num: u32, group_size: u32) -> u32 {
