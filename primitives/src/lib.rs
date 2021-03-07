@@ -101,6 +101,7 @@ fn enumerate<T: Copy>(slice: &'static [T]) -> impl Iterator<Item = (T, u32)> {
 pub struct Transform {
     pub translation: Vec3,
     pub y_rotation: f32,
+    pub y_rotation_matrix: [Vec4; 3],
 }
 
 #[repr(C)]

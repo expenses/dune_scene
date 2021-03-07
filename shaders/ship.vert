@@ -20,24 +20,17 @@ layout(set = 0, binding = 0) uniform Camera {
 struct Transform {
     vec3 translation;
     float y_rotation;
+    mat3 y_rotation_matrix;
 };
 
 layout(set = 1, binding = 0) readonly buffer Transforms {
     Transform transforms[];
 };
 
-mat3 rotation_matrix_y(float theta) {
-    return mat3(
-        cos(theta), 0, sin(theta),
-        0, 1, 0,
-        -sin(theta), 0, cos(theta)
-    );
-}
-
 void main() {
     Transform transform = transforms[gl_InstanceIndex];
 
-    mat3 rotation_matrix = rotation_matrix_y(transform.y_rotation);
+    mat3 rotation_matrix = transform.y_rotation_matrix;
 
     vec3 transformed_pos = rotation_matrix * position + transform.translation;
 

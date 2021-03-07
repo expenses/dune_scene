@@ -3,6 +3,7 @@
 struct Ship {
     vec3 position;
     float facing;
+    mat3 y_rotation_matrix;
 };
 
 layout(set = 0, binding = 0) buffer Ships {
@@ -10,6 +11,14 @@ layout(set = 0, binding = 0) buffer Ships {
 };
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+mat3 rotation_matrix_y(float theta) {
+    return mat3(
+        cos(theta), 0, sin(theta),
+        0, 1, 0,
+        -sin(theta), 0, cos(theta)
+    );
+}
 
 void main() {
     uint index = gl_GlobalInvocationID.x;
@@ -22,6 +31,7 @@ void main() {
 
     ship.facing += 0.01;
     ship.position += vec3(cos(ship.facing), 0.0, sin(ship.facing)) * 0.005;
+    ship.y_rotation_matrix = rotation_matrix_y(ship.facing);
 
     ships[index] = ship;
 }
