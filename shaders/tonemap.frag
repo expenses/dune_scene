@@ -1,5 +1,7 @@
 #version 450
 
+#include "structs.glsl"
+
 layout(location = 0) in vec2 uv;
 
 layout(location = 0) out vec4 out_colour;
@@ -49,13 +51,16 @@ void main() {
     vec3 colour = peak * ratio;
 
     switch (mode) {
-        case 0:
+        case TONEMAPPER_MODE_ON:
             break;
-        case 1:
+        case TONEMAPPER_MODE_NO_CROSSTALK:
             colour = peak * no_crosstalk_ratio;
             break;
-        case 2:
+        case TONEMAPPER_MODE_OFF:
             colour = rgb;
+            break;
+        case TONEMAPPER_MODE_WASM_GAMMA_CORRECT:
+            colour = pow(rgb, vec3(1.0/2.2));
             break;
     }
 

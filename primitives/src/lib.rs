@@ -88,11 +88,12 @@ pub enum TonemapperMode {
     On,
     NoCrosstalk,
     Off,
+    WasmGammaCorrect,
 }
 
 impl TonemapperMode {
     pub fn iter() -> impl Iterator<Item = Self> {
-        [Self::On, Self::NoCrosstalk, Self::Off].iter().cloned()
+        [Self::On, Self::NoCrosstalk, Self::Off, Self::WasmGammaCorrect].iter().cloned()
     }
 }
 

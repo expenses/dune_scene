@@ -8,13 +8,27 @@ use ultraviolet::Vec3;
 use wgpu::util::DeviceExt;
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
-
-    pollster::block_on(run())
+    #[cfg(not(feature = "wasm"))]
+    {
+        env_logger::init();
+        pollster::block_on(run())
+    }
+    #[cfg(feature = "wasm")]
+    {
+        console_error_panic_hook::set_once();
+        console_log::init_with_level(log::Level::Trace)?;
+        wasm_bindgen_futures::spawn_local(async {
+            if let Err(error) = run().await {
+                println!("Error: {}", error);
+            }
+        });
+        Ok(())
+    }
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const FRAMEBUFFER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba32Float;
+const INDEX_FORMAT: wgpu::IndexFormat = wgpu::IndexFormat::Uint16;
 
 async fn run() -> anyhow::Result<()> {
     let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
@@ -66,7 +80,11 @@ async fn run() -> anyhow::Result<()> {
         max_luminance: 1.0,
         grey_in: 0.5,
         grey_out: 0.5,
-        mode: primitives::TonemapperMode::On,
+        mode: if cfg!(feature = "wasm") {
+            primitives::TonemapperMode::WasmGammaCorrect
+        } else {
+            primitives::TonemapperMode::On
+        },
     };
 
     let tonemapper_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -118,6 +136,21 @@ async fn run() -> anyhow::Result<()> {
 
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::Window::new(&event_loop)?;
+
+    #[cfg(feature = "wasm")]
+    {
+        window.set_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
+
+        use winit::platform::web::WindowExtWebSys;
+        web_sys::window()
+            .and_then(|win| win.document())
+            .and_then(|doc| doc.body())
+            .and_then(|body| {
+                body.append_child(&web_sys::Element::from(window.canvas()))
+                    .ok()
+            })
+            .expect("couldn't append canvas to document body");
+    }
 
     let window_size = window.inner_size();
     let width = window_size.width;
@@ -323,8 +356,7 @@ async fn run() -> anyhow::Result<()> {
                         render_pass.set_pipeline(&pipelines.scene_shadows_pipeline);
                         render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
                         render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
-                        render_pass
-                            .set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
+                        render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
                         render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
 
                         if render_ships {
@@ -332,10 +364,7 @@ async fn run() -> anyhow::Result<()> {
                             render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
                             render_pass.set_bind_group(1, &ship_bind_group, &[]);
                             render_pass.set_vertex_buffer(0, ship.vertices.slice(..));
-                            render_pass.set_index_buffer(
-                                ship.indices.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
+                            render_pass.set_index_buffer(ship.indices.slice(..), INDEX_FORMAT);
                             render_pass.draw_indexed(0..ship.num_indices, 0, 0..num_ships);
                         }
                     }
@@ -367,8 +396,7 @@ async fn run() -> anyhow::Result<()> {
                     render_pass.set_bind_group(1, &scene.texture_bind_group, &[]);
                     render_pass.set_bind_group(2, cascaded_shadow_maps.rendering_bind_group(), &[]);
                     render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
-                    render_pass
-                        .set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
                     render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
 
                     if render_ships {
@@ -381,8 +409,7 @@ async fn run() -> anyhow::Result<()> {
                             &[],
                         );
                         render_pass.set_vertex_buffer(0, ship.vertices.slice(..));
-                        render_pass
-                            .set_index_buffer(ship.indices.slice(..), wgpu::IndexFormat::Uint32);
+                        render_pass.set_index_buffer(ship.indices.slice(..), INDEX_FORMAT);
                         render_pass.draw_indexed(0..ship.num_indices, 0, 0..num_ships);
                     }
 

@@ -35,3 +35,8 @@ struct Sun {
     vec3 facing;
     vec3 light_output;
 };
+
+const uint TONEMAPPER_MODE_ON = 0;
+const uint TONEMAPPER_MODE_NO_CROSSTALK = 1;
+const uint TONEMAPPER_MODE_OFF = 2;
+const uint TONEMAPPER_MODE_WASM_GAMMA_CORRECT = 3;

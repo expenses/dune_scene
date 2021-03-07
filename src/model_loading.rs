@@ -107,15 +107,17 @@ impl Scene {
                     Some(buffer_blob)
                 });
 
-                let num_vertices = vertices.len() as u32;
+                let num_vertices = vertices.len() as u16;
 
-                indices.extend(
-                    reader
-                        .read_indices()
-                        .unwrap()
-                        .into_u32()
-                        .map(|index| index + num_vertices),
-                );
+                let read_indices = match reader.read_indices().unwrap() {
+                    gltf::mesh::util::ReadIndices::U16(indices) => indices,
+                    gltf::mesh::util::ReadIndices::U32(_) => {
+                        return Err(anyhow::anyhow!("U32 indices not supported"))
+                    }
+                    _ => unreachable!(),
+                };
+
+                indices.extend(read_indices.map(|index| index + num_vertices));
 
                 let positions = reader.read_positions().unwrap();
                 let uvs = reader.read_tex_coords(0).unwrap().into_f32();
@@ -287,15 +289,17 @@ impl Ship {
                     Some(buffer_blob)
                 });
 
-                let num_vertices = vertices.len() as u32;
+                let num_vertices = vertices.len() as u16;
 
-                indices.extend(
-                    reader
-                        .read_indices()
-                        .unwrap()
-                        .into_u32()
-                        .map(|index| index + num_vertices),
-                );
+                let read_indices = match reader.read_indices().unwrap() {
+                    gltf::mesh::util::ReadIndices::U16(indices) => indices,
+                    gltf::mesh::util::ReadIndices::U32(_) => {
+                        return Err(anyhow::anyhow!("U32 indices not supported"))
+                    }
+                    _ => unreachable!(),
+                };
+
+                indices.extend(read_indices.map(|index| index + num_vertices));
 
                 let positions = reader.read_positions().unwrap();
                 let uvs = reader.read_tex_coords(0).unwrap().into_f32();
