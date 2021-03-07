@@ -8,11 +8,8 @@ layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec2 in_uv;
 layout(location = 2) in vec4 in_tangent;
 layout(location = 3) in vec3 in_camera_dir;
-layout(location = 4) in vec3 in_view_pos;
-
-layout(location = 5) in vec4 in_light_space_pos_0;
-layout(location = 6) in vec4 in_light_space_pos_1;
-layout(location = 7) in vec4 in_light_space_pos_2;
+layout(location = 4) in vec3 in_pos;
+layout(location = 5) in vec3 in_view_pos;
 
 layout(location = 0) out vec4 out_colour;
 
@@ -89,12 +86,7 @@ void main() {
 
     specular *= settings.specular_factor * hue_noise;
 
-    uint cascade_index = cascade_index(in_view_pos.z, csm.split_depths);
-    // todo: this is super ugly.
-    vec4 light_space_positions[3] = { in_light_space_pos_0, in_light_space_pos_1, in_light_space_pos_2 };
-    vec4 light_space_pos = light_space_positions[cascade_index];
-
-    float shadow = calculate_shadow(cascade_index, csm.matrices, csm.split_depths, light_space_pos);
+    float shadow = calculate_shadow(in_view_pos.z, csm.matrices, csm.split_depths, in_pos);
 
     float diffuse_shadow_amount = 0.1;
     float diffuse_shadowing = shadow * (1.0 - diffuse_shadow_amount) + diffuse_shadow_amount;
@@ -116,6 +108,7 @@ void main() {
             colour = hue_noise;
             break;
         case MODE_SHADOW_CASCADE:
+            uint cascade_index = cascade_index(in_view_pos.z, csm.split_depths);
             colour = debug_colour_by_cascade(colour, cascade_index);
             break;
     }

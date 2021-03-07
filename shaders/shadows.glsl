@@ -53,19 +53,21 @@ float filter_pcf(vec2 uv, float z, float w, uint cascadeIndex) {
 	float dy = scale * 1.0 / float(texDim.y);
 
 	float shadowFactor = 0.0;
-	int count = 0;
 	int range = 1;
+	int count = (range * 2 + 1) * (range * 2 + 1);
 
 	for (int x = -range; x <= range; x++) {
 		for (int y = -range; y <= range; y++) {
 			shadowFactor += textureProj(uv + vec2(dx*x, dy*y), z, w, cascadeIndex);
-			count++;
 		}
 	}
 	return shadowFactor / count;
 }
 
-float calculate_shadow(uint cascade_index, mat4 matrices[3], vec3 splits, vec4 light_space_pos) {
+float calculate_shadow(float view_pos_z, mat4 matrices[3], vec3 splits, vec3 frag_pos) {
+	uint cascade_index = cascade_index(view_pos_z, splits);
+	vec4 light_space_pos = matrices[cascade_index] * vec4(frag_pos, 1.0);
+
 	vec4 coords = light_space_pos / light_space_pos.w;
 
     vec2 uv = vec2(
