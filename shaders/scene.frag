@@ -96,7 +96,10 @@ void main() {
 
     float shadow = calculate_shadow(cascade_index, csm.matrices, csm.split_depths, light_space_pos);
 
-    vec3 colour = settings.ambient_lighting + (diffuse + specular) * shadow;
+    float diffuse_shadow_amount = 0.1;
+    float diffuse_shadowing = shadow * (1.0 - diffuse_shadow_amount) + diffuse_shadow_amount;
+
+    vec3 colour = settings.ambient_lighting + (diffuse * diffuse_shadowing) + (specular * shadow);
 
     switch (settings.mode) {
         case MODE_FULL:

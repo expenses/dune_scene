@@ -207,7 +207,7 @@ async fn run() -> anyhow::Result<()> {
             &tonemapper_uniform_buffer,
         );
 
-    let mut cascade_split_lambda = 0.75;
+    let mut cascade_split_lambda = 0.0;
 
     cascaded_shadow_maps.update_params(
         cascaded_shadow_maps::CameraParams {
