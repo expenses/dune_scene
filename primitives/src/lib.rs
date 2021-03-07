@@ -63,7 +63,13 @@ pub enum Mode {
 
 impl Mode {
     pub fn iter() -> impl Iterator<Item = (Self, u32)> {
-        enumerate(&[Self::Full, Self::Normals, Self::Noise, Self::HueNoise, Self::ShadowCascade])
+        enumerate(&[
+            Self::Full,
+            Self::Normals,
+            Self::Noise,
+            Self::HueNoise,
+            Self::ShadowCascade,
+        ])
     }
 }
 

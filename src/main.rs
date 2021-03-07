@@ -151,10 +151,6 @@ async fn run() -> anyhow::Result<()> {
                 binding: 3,
                 resource: settings_buffer.as_entire_binding(),
             },
-            wgpu::BindGroupEntry {
-                binding: 4,
-                resource: cascaded_shadow_maps.uniform_buffer().as_entire_binding(),
-            },
         ],
     });
 
@@ -369,6 +365,7 @@ async fn run() -> anyhow::Result<()> {
                     render_pass.set_pipeline(&pipelines.scene_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);
                     render_pass.set_bind_group(1, &scene.texture_bind_group, &[]);
+                    render_pass.set_bind_group(2, cascaded_shadow_maps.rendering_bind_group(), &[]);
                     render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
                     render_pass
                         .set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -378,6 +375,11 @@ async fn run() -> anyhow::Result<()> {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);
                         render_pass.set_bind_group(0, &bind_group, &[]);
                         render_pass.set_bind_group(1, &ship_bind_group, &[]);
+                        render_pass.set_bind_group(
+                            2,
+                            cascaded_shadow_maps.rendering_bind_group(),
+                            &[],
+                        );
                         render_pass.set_vertex_buffer(0, ship.vertices.slice(..));
                         render_pass
                             .set_index_buffer(ship.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -630,7 +632,6 @@ impl RenderResources {
                     uniform(1, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::VERTEX),
                     sampler(2, wgpu::ShaderStage::FRAGMENT),
                     uniform(3, wgpu::ShaderStage::FRAGMENT),
-                    uniform(4, wgpu::ShaderStage::FRAGMENT),
                 ],
             }),
             texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -701,7 +702,11 @@ impl Pipelines {
                 let scene_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("scene pipeline layout"),
-                        bind_group_layouts: &[&resources.main_bgl, &resources.texture_bgl],
+                        bind_group_layouts: &[
+                            &resources.main_bgl,
+                            &resources.texture_bgl,
+                            shadow_maps.rendering_bind_group_layout(),
+                        ],
                         push_constant_ranges: &[],
                     });
 
@@ -746,7 +751,11 @@ impl Pipelines {
                 let ship_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("ship pipeline layout"),
-                        bind_group_layouts: &[&resources.main_bgl, &resources.ship_bgl],
+                        bind_group_layouts: &[
+                            &resources.main_bgl,
+                            &resources.ship_bgl,
+                            shadow_maps.rendering_bind_group_layout(),
+                        ],
                         push_constant_ranges: &[],
                     });
 

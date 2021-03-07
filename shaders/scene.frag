@@ -4,13 +4,15 @@
 #include "utils.glsl"
 #include "structs.glsl"
 
-#include "shadows.glsl"
-
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec2 in_uv;
 layout(location = 2) in vec4 in_tangent;
 layout(location = 3) in vec3 in_camera_dir;
 layout(location = 4) in vec3 in_view_pos;
+
+layout(location = 5) in vec4 in_light_space_pos_0;
+layout(location = 6) in vec4 in_light_space_pos_1;
+layout(location = 7) in vec4 in_light_space_pos_2;
 
 layout(location = 0) out vec4 out_colour;
 
@@ -24,12 +26,17 @@ layout(set = 0, binding = 3) uniform SettingsUniform {
     Settings settings;
 };
 
-layout(set = 0, binding = 4) uniform CascadedShadowMapUniform {
+layout(set = 1, binding = 0) uniform texture2D u_normals_texture;
+layout(set = 1, binding = 1) uniform texture2D u_details_texture;
+
+layout(set = 2, binding = 0) uniform texture2DArray shadow_texture_array;
+
+layout(set = 2, binding = 1) uniform CascadedShadowMapUniform {
     CSM csm;
 };
 
-layout(set = 1, binding = 0) uniform texture2D u_normals_texture;
-layout(set = 1, binding = 1) uniform texture2D u_details_texture;
+#define SHADOW_MAP sampler2DArray(shadow_texture_array, u_sampler)
+#include "shadows.glsl"
 
 // todo: use a better blending function than this.
 // https://blog.selfshadow.com/publications/blending-in-detail/
@@ -82,7 +89,14 @@ void main() {
 
     specular *= settings.specular_factor * hue_noise;
 
-    vec3 colour = settings.ambient_lighting + diffuse + specular;
+    uint cascade_index = cascade_index(in_view_pos.z, csm.split_depths);
+    // todo: this is super ugly.
+    vec4 light_space_positions[3] = { in_light_space_pos_0, in_light_space_pos_1, in_light_space_pos_2 };
+    vec4 light_space_pos = light_space_positions[cascade_index];
+
+    float shadow = calculate_shadow(cascade_index, csm.matrices, csm.split_depths, light_space_pos);
+
+    vec3 colour = settings.ambient_lighting + (diffuse + specular) * shadow;
 
     switch (settings.mode) {
         case MODE_FULL:
@@ -99,7 +113,6 @@ void main() {
             colour = hue_noise;
             break;
         case MODE_SHADOW_CASCADE:
-            uint cascade_index = cascade_index(in_view_pos.z, csm.split_depths);
             colour = debug_colour_by_cascade(colour, cascade_index);
             break;
     }

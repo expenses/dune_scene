@@ -5,27 +5,34 @@ pub struct CascadedShadowMaps {
     light_projection_buffers: [wgpu::Buffer; 3],
     light_projection_bind_groups: [wgpu::BindGroup; 3],
     projection_bgl: wgpu::BindGroupLayout,
+    rendering_bgl: wgpu::BindGroupLayout,
     uniform_buffer: wgpu::Buffer,
+    rendering_bind_group: wgpu::BindGroup,
 }
 
 impl CascadedShadowMaps {
     pub fn new(device: &wgpu::Device, size: u32) -> Self {
-        let texture = |label| {
-            device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some(&format!("cascaded shadow map - {} texture", label)),
-                    size: wgpu::Extent3d {
-                        width: size,
-                        height: size,
-                        depth: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Depth32Float,
-                    usage: wgpu::TextureUsage::RENDER_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
-                })
-                .create_view(&wgpu::TextureViewDescriptor::default())
+        let array_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("cascaded shadow map - shadow texture array"),
+            size: wgpu::Extent3d {
+                width: size,
+                height: size,
+                depth: 3,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsage::RENDER_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
+        });
+
+        let texture_view = |label, i| {
+            array_texture.create_view(&wgpu::TextureViewDescriptor {
+                label: Some(&format!("cascaded shadow map - {} texture", label)),
+                base_array_layer: i,
+                array_layer_count: Some(std::num::NonZeroU32::new(1).unwrap()),
+                ..Default::default()
+            })
         };
 
         let projection_buffer = |label| {
@@ -60,6 +67,59 @@ impl CascadedShadowMaps {
             }],
         });
 
+        let rendering_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("cascaded shadow map - rendering bind group layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cascaded shadow map - uniform buffer"),
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            size: std::mem::size_of::<Uniform>() as u64,
+            mapped_at_creation: false,
+        });
+
+        let rendering_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("cascaded shadow map - rendering bind group"),
+            layout: &rendering_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&array_texture.create_view(
+                        &wgpu::TextureViewDescriptor {
+                            dimension: Some(wgpu::TextureViewDimension::D2Array),
+                            ..Default::default()
+                        },
+                    )),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         let projection_bind_group = |label, i: usize| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&format!(
@@ -74,15 +134,12 @@ impl CascadedShadowMaps {
             })
         };
 
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("cascaded shadow map - uniform buffer"),
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            size: std::mem::size_of::<Uniform>() as u64,
-            mapped_at_creation: false,
-        });
-
         Self {
-            textures: [texture("near"), texture("middle"), texture("far")],
+            textures: [
+                texture_view("near", 0),
+                texture_view("middle", 1),
+                texture_view("far", 2),
+            ],
             light_projection_bind_groups: [
                 projection_bind_group("near", 0),
                 projection_bind_group("middle", 1),
@@ -91,6 +148,8 @@ impl CascadedShadowMaps {
             light_projection_buffers: projection_buffers,
             projection_bgl,
             uniform_buffer,
+            rendering_bgl,
+            rendering_bind_group,
         }
     }
 
@@ -106,8 +165,12 @@ impl CascadedShadowMaps {
         &self.projection_bgl
     }
 
-    pub fn uniform_buffer(&self) -> &wgpu::Buffer {
-        &self.uniform_buffer
+    pub fn rendering_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.rendering_bgl
+    }
+
+    pub fn rendering_bind_group(&self) -> &wgpu::BindGroup {
+        &self.rendering_bind_group
     }
 
     pub fn update_params(

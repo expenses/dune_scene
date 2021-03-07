@@ -33,21 +33,20 @@ vec3 debug_colour_by_cascade(vec3 colour, uint cascade_index) {
 	return colour;
 }
 
-/*
-float textureProj(vec4 shadow_coord, vec2 offset, uint cascade_index) {
+float textureProj(vec2 uv, float z, float w, uint cascade_index) {
 	float shadow = 1.0;
 	float bias = 0.005;
 
-	if ( shadow_coord.z > -1.0 && shadow_coord.z < 1.0 ) {
-		float dist = texture(SHADOW_MAP, vec3(shadow_coord.xy + offset, cascade_index)).r;
-		if (shadow_coord.w > 0 && dist < shadow_coord.z - bias) {
+	if ( z > -1.0 && z < 1.0 ) {
+		float dist = texture(SHADOW_MAP, vec3(uv, cascade_index)).r;
+		if (w > 0 && dist < z - bias) {
 			shadow = 0.0;
 		}
 	}
 	return shadow;
 }
 
-float filter_pcf(vec4 sc, uint cascadeIndex) {
+float filter_pcf(vec2 uv, float z, float w, uint cascadeIndex) {
 	ivec2 texDim = textureSize(SHADOW_MAP, 0).xy;
 	float scale = 0.75;
 	float dx = scale * 1.0 / float(texDim.x);
@@ -59,17 +58,21 @@ float filter_pcf(vec4 sc, uint cascadeIndex) {
 
 	for (int x = -range; x <= range; x++) {
 		for (int y = -range; y <= range; y++) {
-			shadowFactor += textureProj(sc, vec2(dx*x, dy*y), cascadeIndex);
+			shadowFactor += textureProj(uv + vec2(dx*x, dy*y), z, w, cascadeIndex);
 			count++;
 		}
 	}
 	return shadowFactor / count;
 }
 
-float calculate_shadow(float view_pos_z, mat4 matrices[3], vec3 splits, vec3 fragment_pos) {
-    uint cascade_index = cascade_index(view_pos_z, splits);
-    vec4 shadow_coord = (shadow_bias_mat * matrices[cascade_index]) * vec4(fragment_pos, 1.0);
+float calculate_shadow(uint cascade_index, mat4 matrices[3], vec3 splits, vec4 light_space_pos) {
+	vec4 coords = light_space_pos / light_space_pos.w;
 
-    return filter_pcf(shadow_coord / shadow_coord.w, cascade_index);
+    vec2 uv = vec2(
+        (coords.x + 1.0) / 2.0,
+		// VERY important for webgpu reasons!!
+        (1.0 - coords.y) / 2.0
+    );
+
+    return filter_pcf(uv, coords.z, coords.w, cascade_index);
 }
-*/

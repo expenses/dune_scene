@@ -4,8 +4,6 @@
 #include "utils.glsl"
 #include "structs.glsl"
 
-#include "shadows.glsl"
-
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_colour;
 layout(location = 2) in vec3 in_camera_dir;
@@ -15,13 +13,20 @@ layout(set = 0, binding = 1) uniform SunUniform {
     Sun sun;
 };
 
+layout(set = 0, binding = 2) uniform sampler u_sampler;
+
 layout(set = 0, binding = 3) uniform SettingsUniform {
     Settings settings;
 };
 
-layout(set = 0, binding = 4) uniform CascadedShadowMapUniform {
+layout(set = 2, binding = 0) uniform texture2DArray shadow_texture_array;
+
+layout(set = 2, binding = 1) uniform CascadedShadowMapUniform {
     CSM csm;
 };
+
+#define SHADOW_MAP sampler2DArray(shadow_texture_array, u_sampler)
+#include "shadows.glsl"
 
 layout(location = 0) out vec4 out_colour;
 
