@@ -7,7 +7,8 @@
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_colour;
 layout(location = 2) in vec3 in_camera_dir;
-layout(location = 3) in vec3 in_view_pos;
+layout(location = 3) in vec3 in_pos;
+layout(location = 4) in vec3 in_view_pos;
 
 layout(set = 0, binding = 1) uniform SunUniform {
     Sun sun;
@@ -50,7 +51,12 @@ void main() {
     vec3 diffuse = lighting_factor *
         BRDF_lambertian(f0, f90, in_colour, VdotH);
 
-    vec3 colour = settings.ambient_lighting * in_colour + diffuse;
+    float shadow = calculate_shadow(in_view_pos.z, csm.matrices, csm.split_depths, in_pos);
+
+    float diffuse_shadow_amount = 0.1;
+    float diffuse_shadowing = shadow * (1.0 - diffuse_shadow_amount) + diffuse_shadow_amount;
+
+    vec3 colour = settings.ambient_lighting * in_colour + (diffuse_shadowing * diffuse);
 
     if (settings.mode == MODE_SHADOW_CASCADE) {
         uint cascade_index = cascade_index(in_view_pos.z, csm.split_depths);
