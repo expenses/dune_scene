@@ -1,10 +1,3 @@
-const mat4 shadow_bias_mat = mat4(
-	0.5, 0.0, 0.0, 0.0,
-	0.0, 0.5, 0.0, 0.0,
-	0.0, 0.0, 1.0, 0.0,
-	0.5, 0.5, 0.0, 1.0
-);
-
 uint cascade_index(float view_pos_z, vec3 splits) {
     uint index = 0;
 

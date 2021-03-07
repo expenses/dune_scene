@@ -113,11 +113,13 @@ fn enumerate<T: Copy>(slice: &'static [T]) -> impl Iterator<Item = (T, u32)> {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Transform {
     pub translation: Vec3,
     pub y_rotation: f32,
-    pub y_rotation_matrix: [Vec4; 3],
+    pub _rotation_matrix: [Vec4; 3],
+    pub rotation_speed: f32,
+    pub _end_padding: [u32; 3],
 }
 
 #[repr(C)]

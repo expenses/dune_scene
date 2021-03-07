@@ -25,7 +25,7 @@ void main() {
 
     Ship ship = ships[index];
 
-    ship.facing += 0.01;
+    ship.facing += ship.rotation_speed;
     ship.position += vec3(cos(ship.facing), 0.0, sin(ship.facing)) * 0.005;
     ship.y_rotation_matrix = rotation_matrix_y(ship.facing);
 
