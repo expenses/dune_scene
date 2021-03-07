@@ -1,7 +1,7 @@
 mod model_loading;
 
 use model_loading::Scene;
-use primitives::Vertex;
+use primitives::{Vertex, LineVertex};
 use rand::Rng;
 use ultraviolet::Vec3;
 use wgpu::util::DeviceExt;
@@ -77,7 +77,11 @@ async fn run() -> anyhow::Result<()> {
     let num_ships = 100;
     let ship_positions: Vec<_> = (0..num_ships)
         .map(|_| primitives::Transform {
-            translation: Vec3::new(rng.gen_range(-2.0..=2.0), 0.5, rng.gen_range(-2.0..=2.0)),
+            translation: Vec3::new(
+                rng.gen_range(-2.0..=2.0),
+                rng.gen_range(0.49..=0.51),
+                rng.gen_range(-2.0..=2.0),
+            ),
             y_rotation: rng.gen_range(0.0..360.0_f32).to_radians(),
         })
         .collect();
@@ -259,7 +263,7 @@ async fn run() -> anyhow::Result<()> {
 
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
                         compute_pass.set_bind_group(0, &ship_bind_group, &[]);
-                        compute_pass.dispatch(2, 1, 1);
+                        compute_pass.dispatch(dispatch_count(100, 64), 1, 1);
                     }
 
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -575,6 +579,7 @@ struct Pipelines {
     sun_dir_pipeline: wgpu::RenderPipeline,
     tonemap_pipeline: wgpu::RenderPipeline,
     ship_pipeline: wgpu::RenderPipeline,
+    line_pipeline: wgpu::RenderPipeline,
     ship_movement_pipeline: wgpu::ComputePipeline,
 }
 
@@ -584,6 +589,17 @@ impl Pipelines {
         display_format: wgpu::TextureFormat,
         resources: &RenderResources,
     ) -> Self {
+        let fs_flat_colour =
+            wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
+        let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
+
+        let main_bind_group_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("main bind group pipeline layout"),
+                bind_group_layouts: &[&resources.main_bgl],
+                push_constant_ranges: &[],
+            });
+
         Self {
             scene_pipeline: {
                 let scene_pipeline_layout =
@@ -676,26 +692,52 @@ impl Pipelines {
                 })
             },
             sun_dir_pipeline: {
-                let sun_dir_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("sun dir pipeline layout"),
-                        bind_group_layouts: &[&resources.main_bgl],
-                        push_constant_ranges: &[],
-                    });
-
                 let vs_sun_dir = wgpu::include_spirv!("../shaders/compiled/sun_dir.vert.spv");
                 let vs_sun_dir = device.create_shader_module(&vs_sun_dir);
-                let fs_flat_colour =
-                    wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
-                let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("sun dir pipeline"),
-                    layout: Some(&sun_dir_pipeline_layout),
+                    layout: Some(&main_bind_group_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &vs_sun_dir,
                         entry_point: "main",
                         buffers: &[],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_flat_colour,
+                        entry_point: "main",
+                        targets: &[display_format.into()],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::LineList,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                        clamp_depth: false,
+                    }),
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
+            line_pipeline: {
+                let vs_line = wgpu::include_spirv!("../shaders/compiled/line.vert.spv");
+                let vs_line = device.create_shader_module(&vs_line);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("line pipeline"),
+                    layout: Some(&main_bind_group_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_line,
+                        entry_point: "main",
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<LineVertex>() as u64,
+                            step_mode: wgpu::InputStepMode::Vertex,
+                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float4],
+                        }],
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &fs_flat_colour,
@@ -895,4 +937,14 @@ fn draw_ui(
         .build(&ui, &mut tonemapper_params.grey_out);
 
     (settings_dirty, tonemapper_dirty)
+}
+
+const fn dispatch_count(num: u32, group_size: u32) -> u32 {
+    let mut count = num / group_size;
+    let rem = num % group_size;
+    if rem != 0 {
+        count += 1;
+    }
+
+    count
 }

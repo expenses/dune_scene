@@ -102,3 +102,10 @@ pub struct Transform {
     pub translation: Vec3,
     pub y_rotation: f32,
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LineVertex {
+    pub position: Vec3,
+    pub colour: Vec4,
+}
