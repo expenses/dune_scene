@@ -4,15 +4,17 @@ use ultraviolet::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 pub struct Scene {
+    pub camera_z_near: f32,
+    pub camera_z_far: f32,
+    pub camera_view: Mat4,
     camera_y_fov: f32,
-    camera_z_near: f32,
-    camera_view: Mat4,
     camera_eye: Vec3,
     pub texture_bind_group: wgpu::BindGroup,
     pub sun_buffer: wgpu::Buffer,
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
     pub num_indices: u32,
+    pub sun_facing: Vec3,
 }
 
 impl Scene {
@@ -80,10 +82,12 @@ impl Scene {
             .unwrap();
         let sun_rotor = node_tree.transform_of(sun_node_index).extract_rotation();
 
+        let sun_facing = sun_rotor * Vec3::unit_z();
+
         let sun = Sun {
             // Lighting uses the -Z axis.
             // https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Khronos/KHR_lights_punctual/README.md#directional
-            facing: Vec3A::new(sun_rotor * Vec3::unit_z()),
+            facing: Vec3A::new(sun_facing),
             output: Vec3::from(sun.color()) * sun.intensity(),
         };
 
@@ -148,6 +152,7 @@ impl Scene {
         Ok(Self {
             camera_y_fov: camera_perspective.yfov(),
             camera_z_near: camera_perspective.znear(),
+            camera_z_far: camera_perspective.zfar().unwrap(),
             camera_view,
             texture_bind_group,
             sun_buffer,
@@ -155,14 +160,16 @@ impl Scene {
             indices,
             num_indices,
             camera_eye,
+            sun_facing,
         })
     }
 
     pub fn create_camera(&self, width: u32, height: u32) -> primitives::Camera {
-        let perspective = ultraviolet::projection::perspective_infinite_z_wgpu_dx(
+        let perspective = ultraviolet::projection::perspective_wgpu_dx(
             self.camera_y_fov,
             width as f32 / height as f32,
             self.camera_z_near,
+            self.camera_z_far,
         );
 
         let perspective_view = perspective * self.camera_view;

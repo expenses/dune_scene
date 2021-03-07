@@ -32,6 +32,8 @@ void main() {
     vec3 ratio = rgb / peak;
     peak = tonemap(peak);
 
+    vec3 no_crosstalk_ratio = ratio;
+
     /*
     // Apply channel crosstalk
 
@@ -50,6 +52,7 @@ void main() {
         case 0:
             break;
         case 1:
+            colour = peak * no_crosstalk_ratio;
             break;
         case 2:
             colour = rgb;

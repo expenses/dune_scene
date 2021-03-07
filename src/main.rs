@@ -1,7 +1,8 @@
 mod model_loading;
 
+use cascaded_shadow_maps::CascadedShadowMaps;
 use model_loading::Scene;
-use primitives::{Vertex, LineVertex};
+use primitives::{LineVertex, Vertex};
 use rand::Rng;
 use ultraviolet::Vec3;
 use wgpu::util::DeviceExt;
@@ -41,6 +42,8 @@ async fn run() -> anyhow::Result<()> {
         .await?;
 
     let resources = RenderResources::new(&device);
+
+    let cascaded_shadow_maps = CascadedShadowMaps::new(&device, 1024);
 
     let mut settings = primitives::Settings {
         base_colour: Vec3::new(0.8, 0.535, 0.297),
@@ -103,6 +106,10 @@ async fn run() -> anyhow::Result<()> {
 
     let scene_bytes = include_bytes!("../models/dune.glb");
     let scene = Scene::load(scene_bytes, &device, &queue, &resources.texture_bgl)?;
+    println!(
+        "Camera z near: {}, Camera z far: {}",
+        scene.camera_z_near, scene.camera_z_far
+    );
 
     let ship = model_loading::Ship::load(include_bytes!("../models/ship.glb"), &device, &queue)?;
 
@@ -150,7 +157,7 @@ async fn run() -> anyhow::Result<()> {
 
     let display_format = adapter.get_swap_chain_preferred_format(&surface);
 
-    let pipelines = Pipelines::new(&device, display_format, &resources);
+    let pipelines = Pipelines::new(&device, display_format, &resources, &cascaded_shadow_maps);
 
     let mut imgui = imgui::Context::create();
     let mut imgui_platform = imgui_winit_support::WinitPlatform::init(&mut imgui);
@@ -199,6 +206,19 @@ async fn run() -> anyhow::Result<()> {
             &tonemapper_uniform_buffer,
         );
 
+    let mut cascade_split_lambda = 0.75;
+
+    cascaded_shadow_maps.update_params(
+        cascaded_shadow_maps::CameraParams {
+            projection_view: camera.perspective_view,
+            far_clip: scene.camera_z_far,
+            near_clip: scene.camera_z_near,
+        },
+        scene.sun_facing,
+        cascade_split_lambda,
+        &queue,
+    );
+
     let mut render_sun_dir = false;
     let mut move_ships = true;
     let mut render_ships = true;
@@ -244,6 +264,17 @@ async fn run() -> anyhow::Result<()> {
 
                     let camera = scene.create_camera(width, height);
                     queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
+
+                    cascaded_shadow_maps.update_params(
+                        cascaded_shadow_maps::CameraParams {
+                            projection_view: camera.perspective_view,
+                            far_clip: scene.camera_z_far,
+                            near_clip: scene.camera_z_near,
+                        },
+                        scene.sun_facing,
+                        cascade_split_lambda,
+                        &queue,
+                    );
                 }
                 _ => {}
             },
@@ -264,6 +295,36 @@ async fn run() -> anyhow::Result<()> {
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
                         compute_pass.set_bind_group(0, &ship_bind_group, &[]);
                         compute_pass.dispatch(dispatch_count(100, 64), 1, 1);
+                    }
+
+                    let labels = ["near shadow pass", "middle shadow pass", "far shadow pass"];
+                    let shadow_textures = cascaded_shadow_maps.textures();
+                    let light_projection_bind_groups =
+                        cascaded_shadow_maps.light_projection_bind_groups();
+
+                    for i in 0..3 {
+                        let mut render_pass =
+                            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                label: Some(labels[i]),
+                                color_attachments: &[],
+                                depth_stencil_attachment: Some(
+                                    wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                                        attachment: &shadow_textures[i],
+                                        depth_ops: Some(wgpu::Operations {
+                                            load: wgpu::LoadOp::Clear(1.0),
+                                            store: true,
+                                        }),
+                                        stencil_ops: None,
+                                    },
+                                ),
+                            });
+
+                        render_pass.set_pipeline(&pipelines.scene_shadows_pipeline);
+                        render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
+                        render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
+                        render_pass
+                            .set_index_buffer(scene.indices.slice(..), wgpu::IndexFormat::Uint32);
+                        render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
                     }
 
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -327,34 +388,35 @@ async fn run() -> anyhow::Result<()> {
 
                     drop(render_pass);
 
-                    if render_sun_dir {
-                        let mut render_pass =
-                            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                label: Some("sun dir render pass"),
-                                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                                    attachment: &frame.output.view,
-                                    resolve_target: None,
-                                    ops: wgpu::Operations {
-                                        load: wgpu::LoadOp::Load,
-                                        store: true,
-                                    },
-                                }],
-                                depth_stencil_attachment: Some(
-                                    wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                                        attachment: &depth_texture,
-                                        depth_ops: Some(wgpu::Operations {
-                                            load: wgpu::LoadOp::Load,
-                                            store: true,
-                                        }),
-                                        stencil_ops: None,
-                                    },
-                                ),
-                            });
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("lines render pass"),
+                        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                            attachment: &frame.output.view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: true,
+                            },
+                        }],
+                        depth_stencil_attachment: Some(
+                            wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                                attachment: &depth_texture,
+                                depth_ops: Some(wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: true,
+                                }),
+                                stencil_ops: None,
+                            },
+                        ),
+                    });
 
+                    if render_sun_dir {
                         render_pass.set_pipeline(&pipelines.sun_dir_pipeline);
                         render_pass.set_bind_group(0, &bind_group, &[]);
                         render_pass.draw(0..2, 0..1);
                     }
+
+                    drop(render_pass);
 
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("ui render pass"),
@@ -580,6 +642,7 @@ struct Pipelines {
     tonemap_pipeline: wgpu::RenderPipeline,
     ship_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
+    scene_shadows_pipeline: wgpu::RenderPipeline,
     ship_movement_pipeline: wgpu::ComputePipeline,
 }
 
@@ -588,9 +651,9 @@ impl Pipelines {
         device: &wgpu::Device,
         display_format: wgpu::TextureFormat,
         resources: &RenderResources,
+        shadow_maps: &CascadedShadowMaps,
     ) -> Self {
-        let fs_flat_colour =
-            wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
+        let fs_flat_colour = wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
         let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
 
         let main_bind_group_pipeline_layout =
@@ -788,6 +851,46 @@ impl Pipelines {
                     }),
                     primitive: wgpu::PrimitiveState::default(),
                     depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
+            scene_shadows_pipeline: {
+                let scene_shadows_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("scene shadows pipeline layout"),
+                        bind_group_layouts: &[shadow_maps.light_projection_bind_group_layout()],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_scene_shadows =
+                    wgpu::include_spirv!("../shaders/compiled/scene_shadows.vert.spv");
+                let vs_scene_shadows = device.create_shader_module(&vs_scene_shadows);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("scene shadows pipeline"),
+                    layout: Some(&scene_shadows_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_scene_shadows,
+                        entry_point: "main",
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<Vertex>() as u64,
+                            step_mode: wgpu::InputStepMode::Vertex,
+                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
+                        }],
+                    },
+                    fragment: None,
+                    primitive: wgpu::PrimitiveState {
+                        cull_mode: wgpu::CullMode::Back,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                        clamp_depth: false,
+                    }),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
