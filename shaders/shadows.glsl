@@ -10,14 +10,14 @@ uint cascade_index(float view_pos_z, vec3 splits) {
 	return count;
 }
 
-vec3 debug_colour_by_cascade(vec3 colour, uint cascade_index) {
-	vec3 shading[3] = {
+vec3 debug_colour_for_cascade(uint cascade_index) {
+	vec3 colours[3] = {
 		vec3(1.0, 0.25, 0.25),
 		vec3(0.25, 1.0, 0.25),
 		vec3(0.25, 0.25, 1.0)
 	};
 
-	return colour * shading[cascade_index];
+	return colours[cascade_index];
 }
 
 // See https://github.com/gfx-rs/wgpu-rs/blob/cadc2df8a106ad122c10c2e07733ade8f1e5653c/examples/shadow/shader.wgsl#L67
