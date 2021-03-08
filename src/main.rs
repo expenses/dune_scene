@@ -276,6 +276,7 @@ async fn run() -> anyhow::Result<()> {
     let mut render_sun_dir = false;
     let mut move_ships = true;
     let mut render_ships = true;
+    let mut render_ship_shadows = true;
 
     use winit::event::*;
     use winit::event_loop::*;
@@ -374,7 +375,7 @@ async fn run() -> anyhow::Result<()> {
                                 ),
                             });
 
-                        if render_ships {
+                        if render_ship_shadows {
                             render_pass.set_pipeline(&pipelines.ship_shadows_pipeline);
                             render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
                             render_pass.set_bind_group(1, &ship_bind_group, &[]);
@@ -512,6 +513,7 @@ async fn run() -> anyhow::Result<()> {
                             &mut render_sun_dir,
                             &mut move_ships,
                             &mut render_ships,
+                            &mut render_ship_shadows,
                             &mut cascade_split_lambda,
                             &mut ship_movement_settings,
                         );
@@ -1117,6 +1119,7 @@ fn draw_ui(
     render_sun_dir: &mut bool,
     move_ships: &mut bool,
     render_ships: &mut bool,
+    render_ship_shadows: &mut bool,
     cascade_split_lambda: &mut f32,
     ship_movement_settings: &mut primitives::ShipMovementSettings,
 ) -> DirtyObjects {
@@ -1160,6 +1163,7 @@ fn draw_ui(
 
     ui.checkbox(imgui::im_str!("Move Ships"), move_ships);
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
+    ui.checkbox(imgui::im_str!("Render Ship Shadows"), render_ship_shadows);
 
     dirty.csm |= imgui::Drag::new(imgui::im_str!("Cascade Split Lambda"))
         .range(0.0..=1.0)
