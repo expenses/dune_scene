@@ -16,7 +16,7 @@ const uint MODE_SHADOW_CASCADE = 4;
 
 struct CSM {
     mat4 matrices[3];
-    vec3 split_depths;
+    vec2 split_depths;
 };
 
 struct Camera {

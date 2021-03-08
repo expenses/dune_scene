@@ -263,14 +263,16 @@ async fn run() -> anyhow::Result<()> {
 
     let mut cascade_split_lambda = 0.0;
 
+    let camera_params = cascaded_shadow_maps::CameraParams {
+        projection_view: camera.perspective_view,
+        far_clip: scene.camera_z_far,
+        near_clip: scene.camera_z_near,
+    };
+
     cascaded_shadow_maps.update_params(
-        cascaded_shadow_maps::CameraParams {
-            projection_view: camera.perspective_view,
-            far_clip: scene.camera_z_far,
-            near_clip: scene.camera_z_near,
-        },
+        camera_params,
+        cascaded_shadow_maps::calculate_split_cascades(camera_params, cascade_split_lambda),
         scene.sun_facing,
-        cascade_split_lambda,
         &queue,
     );
 
@@ -321,14 +323,19 @@ async fn run() -> anyhow::Result<()> {
                     camera = scene.create_camera(width, height);
                     queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
 
+                    let camera_params = cascaded_shadow_maps::CameraParams {
+                        projection_view: camera.perspective_view,
+                        far_clip: scene.camera_z_far,
+                        near_clip: scene.camera_z_near,
+                    };
+
                     cascaded_shadow_maps.update_params(
-                        cascaded_shadow_maps::CameraParams {
-                            projection_view: camera.perspective_view,
-                            far_clip: scene.camera_z_far,
-                            near_clip: scene.camera_z_near,
-                        },
+                        camera_params,
+                        cascaded_shadow_maps::calculate_split_cascades(
+                            camera_params,
+                            cascade_split_lambda,
+                        ),
                         scene.sun_facing,
-                        cascade_split_lambda,
                         &queue,
                     );
                 }
@@ -531,6 +538,7 @@ async fn run() -> anyhow::Result<()> {
                             );
                         }
 
+<<<<<<< HEAD
                         if dirty.csm {
                             cascaded_shadow_maps.update_params(
                                 cascaded_shadow_maps::CameraParams {
@@ -550,6 +558,53 @@ async fn run() -> anyhow::Result<()> {
                                 0,
                                 bytemuck::bytes_of(&ship_movement_settings),
                             );
+=======
+                            if dirty.settings {
+                                queue.write_buffer(
+                                    &settings_buffer,
+                                    0,
+                                    bytemuck::bytes_of(&settings),
+                                );
+                            }
+
+                            if dirty.tonemapper {
+                                queue.write_buffer(
+                                    &tonemapper_uniform_buffer,
+                                    0,
+                                    bytemuck::bytes_of(&tonemapper_params.convert()),
+                                );
+                            }
+
+                            if dirty.csm {
+                                let camera_params = cascaded_shadow_maps::CameraParams {
+                                    projection_view: camera.perspective_view,
+                                    far_clip: scene.camera_z_far,
+                                    near_clip: scene.camera_z_near,
+                                };
+
+                                cascaded_shadow_maps.update_params(
+                                    camera_params,
+                                    cascaded_shadow_maps::calculate_split_cascades(
+                                        camera_params,
+                                        cascade_split_lambda,
+                                    ),
+                                    scene.sun_facing,
+                                    &queue,
+                                );
+                            };
+
+                            if dirty.ship_movement_settings {
+                                queue.write_buffer(
+                                    &ship_movement_settings_buffer,
+                                    0,
+                                    bytemuck::bytes_of(&ship_movement_settings),
+                                );
+                            }
+
+                            imgui_renderer
+                                .render(ui.render(), &queue, &device, &mut render_pass)
+                                .expect("Rendering failed");
+>>>>>>> 7ddc1ed (Allow passing in custom cascade splits)
                         }
 
                         imgui_renderer
