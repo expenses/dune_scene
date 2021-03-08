@@ -25,21 +25,25 @@ float percentage_closer_filtering(vec2 light_local, uint cascade_index, float co
 
     float shadow_sum = 0.0;
     // This is expensive so we only do a 3x3 kernel.
-    int kernel_size = 3;
-    int count = kernel_size * kernel_size;
-    int range = (kernel_size - 1) / 2;
+    const uint KERNEL_SIZE = 3;
+    const uint ITERATONS = KERNEL_SIZE * KERNEL_SIZE;
 
-    for (int x = -range; x <= range; x++) {
-        for (int y = -range; y <= range; y++) {
-            vec2 offset = vec2(x, y);
-            shadow_sum += texture(
-                sampler2DArrayShadow(SHADOW_TEXTURE_ARRAY, SHADOW_SAMPLER),
-                vec4(light_local + step * vec2(x, y), cascade_index, comparison)
-            );
-        }
+    // idk if this is actually more performant than generating these coords in a
+    // 2d loop, but it feels nicer.
+    vec2 coords[ITERATONS] = {
+        vec2(-1.0, -1.0), vec2(0.0, -1.0), vec2(1.0, -1.0),
+        vec2(-1.0,  0.0), vec2(0.0,  0.0), vec2(1.0,  0.0),
+        vec2(-1.0,  1.0), vec2(0.0,  1.0), vec2(1.0,  1.0),
+    };
+
+    for (uint i = 0; i < ITERATONS; i++) {
+        shadow_sum += texture(
+            sampler2DArrayShadow(SHADOW_TEXTURE_ARRAY, SHADOW_SAMPLER),
+            vec4(light_local + step * coords[i], cascade_index, comparison)
+        );
     }
 
-    return shadow_sum / count;
+    return shadow_sum / ITERATONS;
 }
 
 // See https://github.com/gfx-rs/wgpu-rs/blob/cadc2df8a106ad122c10c2e07733ade8f1e5653c/examples/shadow/shader.wgsl#L67
