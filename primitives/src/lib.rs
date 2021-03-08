@@ -128,3 +128,9 @@ pub struct LineVertex {
     pub position: Vec3,
     pub colour: Vec4,
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ShipMovementSettings {
+    pub bounds: f32,
+}

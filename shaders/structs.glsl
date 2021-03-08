@@ -41,3 +41,7 @@ const uint TONEMAPPER_MODE_ON = 0;
 const uint TONEMAPPER_MODE_NO_CROSSTALK = 1;
 const uint TONEMAPPER_MODE_OFF = 2;
 const uint TONEMAPPER_MODE_WASM_GAMMA_CORRECT = 3;
+
+struct ShipMovementSettings {
+    float bounds;
+};
