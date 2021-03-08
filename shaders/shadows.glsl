@@ -20,6 +20,28 @@ vec3 debug_colour_for_cascade(uint cascade_index) {
 	return colours[cascade_index];
 }
 
+float percentage_closer_filtering(vec2 light_local, uint cascade_index, float comparison) {
+    vec2 step = 1.0 / textureSize(sampler2DArrayShadow(SHADOW_TEXTURE_ARRAY, SHADOW_SAMPLER), 0).xy;
+
+    float shadow_sum = 0.0;
+    // This is expensive so we only do a 3x3 kernel.
+    int kernel_size = 3;
+    int count = kernel_size * kernel_size;
+    int range = (kernel_size - 1) / 2;
+
+    for (int x = -range; x <= range; x++) {
+        for (int y = -range; y <= range; y++) {
+            vec2 offset = vec2(x, y);
+            shadow_sum += texture(
+                sampler2DArrayShadow(SHADOW_TEXTURE_ARRAY, SHADOW_SAMPLER),
+                vec4(light_local + step * vec2(x, y), cascade_index, comparison)
+            );
+        }
+    }
+
+    return shadow_sum / count;
+}
+
 // See https://github.com/gfx-rs/wgpu-rs/blob/cadc2df8a106ad122c10c2e07733ade8f1e5653c/examples/shadow/shader.wgsl#L67
 float calculate_shadow(float view_pos_z, mat4 matrices[3], vec3 splits, vec3 frag_pos) {
 	uint cascade_index = cascade_index(view_pos_z, splits);
@@ -40,8 +62,5 @@ float calculate_shadow(float view_pos_z, mat4 matrices[3], vec3 splits, vec3 fra
 	float bias = 0.005;
     float comparison = transformed_coords.z * proj_correction - bias;
 
-	return texture(
-		sampler2DArrayShadow(SHADOW_TEXTURE_ARRAY, SHADOW_SAMPLER),
-		vec4(light_local, cascade_index, comparison)
-	);
+    return percentage_closer_filtering(light_local, cascade_index, comparison);
 }
