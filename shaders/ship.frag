@@ -40,7 +40,6 @@ void main() {
     vec3 f0 = vec3(0.04);
     vec3 f90 = compute_f90(f0);
 
-
     float NdotL = clamped_dot(normal, sun.facing);
     float VdotH = clamped_dot(camera_dir, halfway_dir);
     float NdotV = clamped_dot(normal, camera_dir);
