@@ -143,13 +143,14 @@ async fn run() -> anyhow::Result<()> {
     });
 
     let scene_bytes = include_bytes!("../models/dune.glb");
-    let scene = Scene::load(scene_bytes, &device, &queue, &resources.texture_bgl)?;
+    let scene = Scene::load(scene_bytes, &device, &queue, &resources)?;
     println!(
         "Camera z near: {}, Camera z far: {}",
         scene.camera_z_near, scene.camera_z_far
     );
 
-    let ship = model_loading::Ship::load(include_bytes!("../models/ship.glb"), &device, &queue)?;
+    let ship_bytes = include_bytes!("../models/ship.glb");
+    let ship = model_loading::Ship::load(ship_bytes, &device, &queue, &resources)?;
 
     // Now we can create a window.
 
@@ -415,8 +416,9 @@ async fn run() -> anyhow::Result<()> {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);
                         render_pass.set_bind_group(0, &bind_group, &[]);
                         render_pass.set_bind_group(1, &ship_bind_group, &[]);
+                        render_pass.set_bind_group(2, &ship.texture_bind_group, &[]);
                         render_pass.set_bind_group(
-                            2,
+                            3,
                             cascaded_shadow_maps.rendering_bind_group(),
                             &[],
                         );
@@ -627,9 +629,10 @@ fn framebuffer_and_tonemapper_bind_group(
 }
 
 /// All the permement resources that we can load before creating a window.
-struct RenderResources {
+pub struct RenderResources {
     main_bgl: wgpu::BindGroupLayout,
-    texture_bgl: wgpu::BindGroupLayout,
+    single_texture_bgl: wgpu::BindGroupLayout,
+    double_texture_bgl: wgpu::BindGroupLayout,
     tonemap_bgl: wgpu::BindGroupLayout,
     ship_bgl: wgpu::BindGroupLayout,
     ship_movement_bgl: wgpu::BindGroupLayout,
@@ -691,8 +694,12 @@ impl RenderResources {
                     uniform(3, wgpu::ShaderStage::FRAGMENT),
                 ],
             }),
-            texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("texture bind group layout"),
+            single_texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("single texxture bind group layout"),
+                entries: &[texture(0, wgpu::ShaderStage::FRAGMENT)],
+            }),
+            double_texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("double texture bind group layout"),
                 entries: &[
                     texture(0, wgpu::ShaderStage::FRAGMENT),
                     texture(1, wgpu::ShaderStage::FRAGMENT),
@@ -765,7 +772,7 @@ impl Pipelines {
                         label: Some("scene pipeline layout"),
                         bind_group_layouts: &[
                             &resources.main_bgl,
-                            &resources.texture_bgl,
+                            &resources.double_texture_bgl,
                             shadow_maps.rendering_bind_group_layout(),
                         ],
                         push_constant_ranges: &[],
@@ -815,6 +822,7 @@ impl Pipelines {
                         bind_group_layouts: &[
                             &resources.main_bgl,
                             &resources.ship_bgl,
+                            &resources.single_texture_bgl,
                             shadow_maps.rendering_bind_group_layout(),
                         ],
                         push_constant_ranges: &[],
