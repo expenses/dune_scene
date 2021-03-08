@@ -268,14 +268,16 @@ async fn run() -> anyhow::Result<()> {
 
     let mut cascade_split_lambda = 0.0;
 
+    let camera_params = cascaded_shadow_maps::CameraParams {
+        projection_view: camera.perspective_view,
+        far_clip: scene.camera_z_far,
+        near_clip: scene.camera_z_near,
+    };
+
     cascaded_shadow_maps.update_params(
-        cascaded_shadow_maps::CameraParams {
-            projection_view: camera.perspective_view,
-            far_clip: scene.camera_z_far,
-            near_clip: scene.camera_z_near,
-        },
+        camera_params,
+        cascaded_shadow_maps::calculate_split_cascades(camera_params, cascade_split_lambda),
         scene.sun_facing,
-        cascade_split_lambda,
         &queue,
     );
 
@@ -327,14 +329,19 @@ async fn run() -> anyhow::Result<()> {
                     camera = scene.create_camera(width, height);
                     queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
 
+                    let camera_params = cascaded_shadow_maps::CameraParams {
+                        projection_view: camera.perspective_view,
+                        far_clip: scene.camera_z_far,
+                        near_clip: scene.camera_z_near,
+                    };
+
                     cascaded_shadow_maps.update_params(
-                        cascaded_shadow_maps::CameraParams {
-                            projection_view: camera.perspective_view,
-                            far_clip: scene.camera_z_far,
-                            near_clip: scene.camera_z_near,
-                        },
+                        camera_params,
+                        cascaded_shadow_maps::calculate_split_cascades(
+                            camera_params,
+                            cascade_split_lambda,
+                        ),
                         scene.sun_facing,
-                        cascade_split_lambda,
                         &queue,
                     );
                 }
@@ -545,14 +552,19 @@ async fn run() -> anyhow::Result<()> {
                             }
 
                             if dirty.csm {
+                                let camera_params = cascaded_shadow_maps::CameraParams {
+                                    projection_view: camera.perspective_view,
+                                    far_clip: scene.camera_z_far,
+                                    near_clip: scene.camera_z_near,
+                                };
+
                                 cascaded_shadow_maps.update_params(
-                                    cascaded_shadow_maps::CameraParams {
-                                        projection_view: camera.perspective_view,
-                                        far_clip: scene.camera_z_far,
-                                        near_clip: scene.camera_z_near,
-                                    },
+                                    camera_params,
+                                    cascaded_shadow_maps::calculate_split_cascades(
+                                        camera_params,
+                                        cascade_split_lambda,
+                                    ),
                                     scene.sun_facing,
-                                    cascade_split_lambda,
                                     &queue,
                                 );
                             };

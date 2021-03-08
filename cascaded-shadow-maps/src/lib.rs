@@ -197,11 +197,11 @@ impl CascadedShadowMaps {
     pub fn update_params(
         &self,
         camera: CameraParams,
+        cascade_splits: [f32; 3],
         origin_to_light: Vec3,
-        cascade_split_lambda: f32,
         queue: &wgpu::Queue,
     ) {
-        let uniform = update_cascades(camera, cascade_split_lambda, origin_to_light);
+        let uniform = update_cascades(camera, cascade_splits, origin_to_light);
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
 
@@ -215,6 +215,7 @@ impl CascadedShadowMaps {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct CameraParams {
     pub projection_view: Mat4,
     pub near_clip: f32,
@@ -225,15 +226,13 @@ pub struct CameraParams {
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniform {
     matrices: [Mat4; 3],
-    split_depths: [f32; 3],
+    split_depths: [f32; 2],
 }
 
-// https://github.com/SaschaWillems/Vulkan/blob/5db9781d529467c4474bbc957ab5f1ee06126cf4/examples/shadowmappingcascade/shadowmappingcascade.cpp#L634-L638
-fn update_cascades(
-    camera: CameraParams,
-    cascade_split_lambda: f32,
-    origin_to_light: Vec3,
-) -> Uniform {
+/// Calculate split depths based on view camera frustum
+///
+/// Based on method presented in https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch10.html
+pub fn calculate_split_cascades(camera: CameraParams, cascade_split_lambda: f32) -> [f32; 3] {
     let clip_range = camera.far_clip - camera.near_clip;
 
     let min_z = camera.near_clip;
@@ -242,8 +241,6 @@ fn update_cascades(
     let range = max_z - min_z;
     let ratio = max_z / min_z;
 
-    // Calculate split depths based on view camera frustum
-    // Based on method presented in https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch10.html
     let cascade_split = |i| {
         let p = (i + 1) as f32 / 3.0;
         let log = min_z * ratio.powf(p);
@@ -251,7 +248,16 @@ fn update_cascades(
         let d = cascade_split_lambda * (log - uniform) + uniform;
         (d - camera.near_clip) / clip_range
     };
-    let cascade_splits = [cascade_split(0), cascade_split(1), cascade_split(2)];
+    [cascade_split(0), cascade_split(1), cascade_split(2)]
+}
+
+// https://github.com/SaschaWillems/Vulkan/blob/5db9781d529467c4474bbc957ab5f1ee06126cf4/examples/shadowmappingcascade/shadowmappingcascade.cpp#L634-L638
+fn update_cascades(
+    camera: CameraParams,
+    cascade_splits: [f32; 3],
+    origin_to_light: Vec3,
+) -> Uniform {
+    let clip_range = camera.far_clip - camera.near_clip;
 
     let inverse_camera_projection_view = camera.projection_view.inversed();
 
@@ -325,10 +331,13 @@ fn update_cascades(
 
     let (matrix_1, split_depth_1) = calculate_matrix(0.0, cascade_splits[0]);
     let (matrix_2, split_depth_2) = calculate_matrix(cascade_splits[0], cascade_splits[1]);
-    let (matrix_3, split_depth_3) = calculate_matrix(cascade_splits[1], cascade_splits[2]);
+    let (matrix_3, _) = calculate_matrix(cascade_splits[1], cascade_splits[2]);
 
     Uniform {
         matrices: [matrix_1, matrix_2, matrix_3],
-        split_depths: [split_depth_1, split_depth_2, split_depth_3],
+        // Despite there being 3 matrices, we only care about the first two
+        // split depths as we can just sample the 3rd shadow texture even if an
+        // object lies beyond it.
+        split_depths: [split_depth_1, split_depth_2],
     }
 }
