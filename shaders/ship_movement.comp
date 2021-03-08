@@ -6,7 +6,9 @@ layout(set = 0, binding = 0) buffer Ships {
     Ship ships[];
 };
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout(set = 1, binding = 0) uniform ShipMovementSettingsUniform {
+    ShipMovementSettings settings;
+};
 
 mat3 rotation_matrix_y(float theta) {
     return mat3(
@@ -15,6 +17,8 @@ mat3 rotation_matrix_y(float theta) {
         -sin(theta), 0, cos(theta)
     );
 }
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
     uint index = gl_GlobalInvocationID.x;
@@ -27,6 +31,12 @@ void main() {
 
     ship.facing += ship.rotation_speed;
     ship.position += vec3(cos(ship.facing), 0.0, sin(ship.facing)) * 0.005;
+
+    vec2 ship_horizontal = ship.position.xz;
+    bvec2 is_over_bounds = greaterThan(abs(ship_horizontal), vec2(settings.bounds));
+    vec2 offset = vec2(is_over_bounds) * sign(ship_horizontal) * (settings.bounds * 2.0);
+    ship.position.xz = ship_horizontal - offset;
+
     ship.y_rotation_matrix = rotation_matrix_y(ship.facing);
 
     ships[index] = ship;

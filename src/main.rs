@@ -124,6 +124,24 @@ async fn run() -> anyhow::Result<()> {
         }],
     });
 
+    let mut ship_movement_settings = primitives::ShipMovementSettings { bounds: 2.5 };
+
+    let ship_movement_settings_buffer =
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ship movement settings buffer"),
+            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            contents: bytemuck::bytes_of(&ship_movement_settings),
+        });
+
+    let ship_movement_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("ship movement bind group"),
+        layout: &resources.ship_movement_bgl,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: ship_movement_settings_buffer.as_entire_binding(),
+        }],
+    });
+
     let scene_bytes = include_bytes!("../models/dune.glb");
     let scene = Scene::load(scene_bytes, &device, &queue, &resources.texture_bgl)?;
     println!(
@@ -335,6 +353,7 @@ async fn run() -> anyhow::Result<()> {
 
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
                         compute_pass.set_bind_group(0, &ship_bind_group, &[]);
+                        compute_pass.set_bind_group(1, &ship_movement_bind_group, &[]);
                         compute_pass.dispatch(dispatch_count(100, 64), 1, 1);
                     }
 
@@ -501,6 +520,7 @@ async fn run() -> anyhow::Result<()> {
                                 &mut move_ships,
                                 &mut render_ships,
                                 &mut cascade_split_lambda,
+                                &mut ship_movement_settings,
                             );
 
                             if dirty.settings {
@@ -531,6 +551,14 @@ async fn run() -> anyhow::Result<()> {
                                     &queue,
                                 );
                             };
+
+                            if dirty.ship_movement_settings {
+                                queue.write_buffer(
+                                    &ship_movement_settings_buffer,
+                                    0,
+                                    bytemuck::bytes_of(&ship_movement_settings),
+                                );
+                            }
 
                             imgui_renderer
                                 .render(ui.render(), &queue, &device, &mut render_pass)
@@ -616,6 +644,7 @@ struct RenderResources {
     texture_bgl: wgpu::BindGroupLayout,
     tonemap_bgl: wgpu::BindGroupLayout,
     ship_bgl: wgpu::BindGroupLayout,
+    ship_movement_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 }
 
@@ -696,6 +725,10 @@ impl RenderResources {
                     wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::COMPUTE,
                     false,
                 )],
+            }),
+            ship_movement_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("ship movement bind group layout"),
+                entries: &[uniform(0, wgpu::ShaderStage::COMPUTE)],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("linear sampler"),
@@ -1023,7 +1056,7 @@ impl Pipelines {
                 let ship_movement_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("ship movement pipeline layout"),
-                        bind_group_layouts: &[&resources.ship_bgl],
+                        bind_group_layouts: &[&resources.ship_bgl, &resources.ship_movement_bgl],
                         push_constant_ranges: &[],
                     });
 
@@ -1090,6 +1123,7 @@ fn draw_ui(
     move_ships: &mut bool,
     render_ships: &mut bool,
     cascade_split_lambda: &mut f32,
+    ship_movement_settings: &mut primitives::ShipMovementSettings,
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
 
@@ -1137,6 +1171,11 @@ fn draw_ui(
         .speed(0.005)
         .build(&ui, cascade_split_lambda);
 
+    dirty.ship_movement_settings |= imgui::Drag::new(imgui::im_str!("Ship Movement Bounds"))
+        .range(0.0..=2.5)
+        .speed(0.01)
+        .build(&ui, &mut ship_movement_settings.bounds);
+
     for mode in primitives::TonemapperMode::iter() {
         dirty.tonemapper |= ui.radio_button(
             &imgui::im_str!("Tonemapper {:?}", mode),
@@ -1178,6 +1217,7 @@ struct DirtyObjects {
     settings: bool,
     tonemapper: bool,
     csm: bool,
+    ship_movement_settings: bool,
 }
 
 const fn dispatch_count(num: u32, group_size: u32) -> u32 {

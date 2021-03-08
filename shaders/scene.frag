@@ -28,11 +28,14 @@ layout(set = 1, binding = 1) uniform texture2D u_details_texture;
 
 layout(set = 2, binding = 0) uniform texture2DArray shadow_texture_array;
 
-layout(set = 2, binding = 1) uniform CascadedShadowMapUniform {
+layout(set = 2, binding = 1) uniform sampler shadow_sampler;
+
+layout(set = 2, binding = 2) uniform CascadedShadowMapUniform {
     CSM csm;
 };
 
-#define SHADOW_MAP sampler2DArray(shadow_texture_array, u_sampler)
+#define SHADOW_SAMPLER shadow_sampler
+#define SHADOW_TEXTURE_ARRAY shadow_texture_array
 #include "shadows.glsl"
 
 // todo: use a better blending function than this.
