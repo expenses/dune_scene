@@ -1,3 +1,4 @@
+use crate::RenderResources;
 use primitives::{Sun, Vec3A, Vertex};
 use std::collections::HashMap;
 use ultraviolet::{Mat4, Vec3};
@@ -22,7 +23,7 @@ impl Scene {
         bytes: &[u8],
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        texture_bgl: &wgpu::BindGroupLayout,
+        resources: &RenderResources,
     ) -> anyhow::Result<Self> {
         let gltf = gltf::Gltf::from_slice(bytes)?;
 
@@ -58,8 +59,8 @@ impl Scene {
         }
 
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("texture bind group"),
-            layout: texture_bgl,
+            label: Some("scene texture bind group"),
+            layout: &resources.double_texture_bgl,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -264,10 +265,16 @@ pub struct Ship {
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
     pub num_indices: u32,
+    pub texture_bind_group: wgpu::BindGroup,
 }
 
 impl Ship {
-    pub fn load(bytes: &[u8], device: &wgpu::Device, queue: &wgpu::Queue) -> anyhow::Result<Self> {
+    pub fn load(
+        bytes: &[u8],
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        resources: &RenderResources,
+    ) -> anyhow::Result<Self> {
         let gltf = gltf::Gltf::from_slice(bytes)?;
 
         let buffer_blob = gltf.blob.as_ref().unwrap();
@@ -335,10 +342,23 @@ impl Ship {
             contents: bytemuck::cast_slice(&indices),
         });
 
+        let image = gltf.images().next().unwrap();
+        let image = load_image(&image, buffer_blob, device, queue)?;
+
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ship texture bind group"),
+            layout: &resources.single_texture_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&image),
+            }],
+        });
+
         Ok(Self {
             vertices,
             indices,
             num_indices,
+            texture_bind_group,
         })
     }
 }

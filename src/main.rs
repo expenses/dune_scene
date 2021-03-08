@@ -1,9 +1,10 @@
 mod model_loading;
+mod resources_and_pipelines;
 
 use cascaded_shadow_maps::CascadedShadowMaps;
 use model_loading::Scene;
-use primitives::{LineVertex, Vertex};
 use rand::Rng;
+use resources_and_pipelines::{Pipelines, RenderResources};
 use ultraviolet::Vec3;
 use wgpu::util::DeviceExt;
 
@@ -143,13 +144,14 @@ async fn run() -> anyhow::Result<()> {
     });
 
     let scene_bytes = include_bytes!("../models/dune.glb");
-    let scene = Scene::load(scene_bytes, &device, &queue, &resources.texture_bgl)?;
+    let scene = Scene::load(scene_bytes, &device, &queue, &resources)?;
     println!(
         "Camera z near: {}, Camera z far: {}",
         scene.camera_z_near, scene.camera_z_far
     );
 
-    let ship = model_loading::Ship::load(include_bytes!("../models/ship.glb"), &device, &queue)?;
+    let ship_bytes = include_bytes!("../models/ship.glb");
+    let ship = model_loading::Ship::load(ship_bytes, &device, &queue, &resources)?;
 
     // Now we can create a window.
 
@@ -280,6 +282,7 @@ async fn run() -> anyhow::Result<()> {
     let mut render_sun_dir = false;
     let mut move_ships = true;
     let mut render_ships = true;
+    let mut render_ship_shadows = true;
 
     use winit::event::*;
     use winit::event_loop::*;
@@ -379,7 +382,7 @@ async fn run() -> anyhow::Result<()> {
                                 ),
                             });
 
-                        if render_ships {
+                        if render_ship_shadows {
                             render_pass.set_pipeline(&pipelines.ship_shadows_pipeline);
                             render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
                             render_pass.set_bind_group(1, &ship_bind_group, &[]);
@@ -421,8 +424,9 @@ async fn run() -> anyhow::Result<()> {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);
                         render_pass.set_bind_group(0, &bind_group, &[]);
                         render_pass.set_bind_group(1, &ship_bind_group, &[]);
+                        render_pass.set_bind_group(2, &ship.texture_bind_group, &[]);
                         render_pass.set_bind_group(
-                            2,
+                            3,
                             cascaded_shadow_maps.rendering_bind_group(),
                             &[],
                         );
@@ -519,6 +523,7 @@ async fn run() -> anyhow::Result<()> {
                                 &mut render_sun_dir,
                                 &mut move_ships,
                                 &mut render_ships,
+                                &mut render_ship_shadows,
                                 &mut cascade_split_lambda,
                                 &mut ship_movement_settings,
                             );
@@ -638,443 +643,6 @@ fn framebuffer_and_tonemapper_bind_group(
     (framebuffer_texture, tonemapper_bind_group)
 }
 
-/// All the permement resources that we can load before creating a window.
-struct RenderResources {
-    main_bgl: wgpu::BindGroupLayout,
-    texture_bgl: wgpu::BindGroupLayout,
-    tonemap_bgl: wgpu::BindGroupLayout,
-    ship_bgl: wgpu::BindGroupLayout,
-    ship_movement_bgl: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
-}
-
-impl RenderResources {
-    fn new(device: &wgpu::Device) -> Self {
-        let uniform = |binding, shader_stage| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: shader_stage,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        };
-
-        let texture = |binding, shader_stage| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: shader_stage,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        };
-
-        let sampler = |binding, shader_stage| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: shader_stage,
-            ty: wgpu::BindingType::Sampler {
-                filtering: false,
-                comparison: false,
-            },
-            count: None,
-        };
-
-        let storage = |binding, shader_stage, read_only| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: shader_stage,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Storage { read_only },
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        };
-
-        Self {
-            main_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("bind group layout"),
-                entries: &[
-                    uniform(0, wgpu::ShaderStage::VERTEX),
-                    uniform(1, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::VERTEX),
-                    sampler(2, wgpu::ShaderStage::FRAGMENT),
-                    uniform(3, wgpu::ShaderStage::FRAGMENT),
-                ],
-            }),
-            texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("texture bind group layout"),
-                entries: &[
-                    texture(0, wgpu::ShaderStage::FRAGMENT),
-                    texture(1, wgpu::ShaderStage::FRAGMENT),
-                ],
-            }),
-            tonemap_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("tonemapper bind group layout"),
-                entries: &[
-                    texture(0, wgpu::ShaderStage::FRAGMENT),
-                    sampler(1, wgpu::ShaderStage::FRAGMENT),
-                    uniform(2, wgpu::ShaderStage::FRAGMENT),
-                ],
-            }),
-            ship_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("ship bind group layout"),
-                entries: &[storage(
-                    0,
-                    wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::COMPUTE,
-                    false,
-                )],
-            }),
-            ship_movement_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("ship movement bind group layout"),
-                entries: &[uniform(0, wgpu::ShaderStage::COMPUTE)],
-            }),
-            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("linear sampler"),
-                mag_filter: wgpu::FilterMode::Linear,
-                min_filter: wgpu::FilterMode::Linear,
-                address_mode_u: wgpu::AddressMode::Repeat,
-                address_mode_v: wgpu::AddressMode::Repeat,
-                ..Default::default()
-            }),
-        }
-    }
-}
-
-struct Pipelines {
-    scene_pipeline: wgpu::RenderPipeline,
-    sun_dir_pipeline: wgpu::RenderPipeline,
-    tonemap_pipeline: wgpu::RenderPipeline,
-    ship_pipeline: wgpu::RenderPipeline,
-    line_pipeline: wgpu::RenderPipeline,
-    scene_shadows_pipeline: wgpu::RenderPipeline,
-    ship_shadows_pipeline: wgpu::RenderPipeline,
-    ship_movement_pipeline: wgpu::ComputePipeline,
-}
-
-impl Pipelines {
-    fn new(
-        device: &wgpu::Device,
-        display_format: wgpu::TextureFormat,
-        resources: &RenderResources,
-        shadow_maps: &CascadedShadowMaps,
-    ) -> Self {
-        let fs_flat_colour = wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
-        let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
-
-        let main_bind_group_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("main bind group pipeline layout"),
-                bind_group_layouts: &[&resources.main_bgl],
-                push_constant_ranges: &[],
-            });
-
-        Self {
-            scene_pipeline: {
-                let scene_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("scene pipeline layout"),
-                        bind_group_layouts: &[
-                            &resources.main_bgl,
-                            &resources.texture_bgl,
-                            shadow_maps.rendering_bind_group_layout(),
-                        ],
-                        push_constant_ranges: &[],
-                    });
-
-                let vs_scene = wgpu::include_spirv!("../shaders/compiled/scene.vert.spv");
-                let vs_scene = device.create_shader_module(&vs_scene);
-                let fs_scene = wgpu::include_spirv!("../shaders/compiled/scene.frag.spv");
-                let fs_scene = device.create_shader_module(&fs_scene);
-
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("scene pipeline"),
-                    layout: Some(&scene_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_scene,
-                        entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<Vertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-                        }],
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &fs_scene,
-                        entry_point: "main",
-                        targets: &[FRAMEBUFFER_FORMAT.into()],
-                    }),
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
-                    multisample: wgpu::MultisampleState::default(),
-                })
-            },
-            ship_pipeline: {
-                let ship_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("ship pipeline layout"),
-                        bind_group_layouts: &[
-                            &resources.main_bgl,
-                            &resources.ship_bgl,
-                            shadow_maps.rendering_bind_group_layout(),
-                        ],
-                        push_constant_ranges: &[],
-                    });
-
-                let vs_ship = wgpu::include_spirv!("../shaders/compiled/ship.vert.spv");
-                let vs_ship = device.create_shader_module(&vs_ship);
-                let fs_ship = wgpu::include_spirv!("../shaders/compiled/ship.frag.spv");
-                let fs_ship = device.create_shader_module(&fs_ship);
-
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("ship pipeline"),
-                    layout: Some(&ship_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_ship,
-                        entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<Vertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-                        }],
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &fs_ship,
-                        entry_point: "main",
-                        targets: &[FRAMEBUFFER_FORMAT.into()],
-                    }),
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
-                    multisample: wgpu::MultisampleState::default(),
-                })
-            },
-            sun_dir_pipeline: {
-                let vs_sun_dir = wgpu::include_spirv!("../shaders/compiled/sun_dir.vert.spv");
-                let vs_sun_dir = device.create_shader_module(&vs_sun_dir);
-
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("sun dir pipeline"),
-                    layout: Some(&main_bind_group_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_sun_dir,
-                        entry_point: "main",
-                        buffers: &[],
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &fs_flat_colour,
-                        entry_point: "main",
-                        targets: &[display_format.into()],
-                    }),
-                    primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::LineList,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
-                    multisample: wgpu::MultisampleState::default(),
-                })
-            },
-            line_pipeline: {
-                let vs_line = wgpu::include_spirv!("../shaders/compiled/line.vert.spv");
-                let vs_line = device.create_shader_module(&vs_line);
-
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("line pipeline"),
-                    layout: Some(&main_bind_group_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_line,
-                        entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<LineVertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float4],
-                        }],
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &fs_flat_colour,
-                        entry_point: "main",
-                        targets: &[display_format.into()],
-                    }),
-                    primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::LineList,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
-                    multisample: wgpu::MultisampleState::default(),
-                })
-            },
-            tonemap_pipeline: {
-                let tonemap_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("tonemapper pipeline layout"),
-                        bind_group_layouts: &[&resources.tonemap_bgl],
-                        push_constant_ranges: &[],
-                    });
-
-                let vs_fullscreen_tri =
-                    wgpu::include_spirv!("../shaders/compiled/fullscreen_tri.vert.spv");
-                let vs_fullscreen_tri = device.create_shader_module(&vs_fullscreen_tri);
-                let fs_tonemap = wgpu::include_spirv!("../shaders/compiled/tonemap.frag.spv");
-                let fs_tonemap = device.create_shader_module(&fs_tonemap);
-
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("tonemap pipeline"),
-                    layout: Some(&tonemap_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_fullscreen_tri,
-                        entry_point: "main",
-                        buffers: &[],
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &fs_tonemap,
-                        entry_point: "main",
-                        targets: &[display_format.into()],
-                    }),
-                    primitive: wgpu::PrimitiveState::default(),
-                    depth_stencil: None,
-                    multisample: wgpu::MultisampleState::default(),
-                })
-            },
-            scene_shadows_pipeline: {
-                let scene_shadows_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("scene shadows pipeline layout"),
-                        bind_group_layouts: &[shadow_maps.light_projection_bind_group_layout()],
-                        push_constant_ranges: &[],
-                    });
-
-                let vs_scene_shadows =
-                    wgpu::include_spirv!("../shaders/compiled/scene_shadows.vert.spv");
-                let vs_scene_shadows = device.create_shader_module(&vs_scene_shadows);
-
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("scene shadows pipeline"),
-                    layout: Some(&scene_shadows_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_scene_shadows,
-                        entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<Vertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-                        }],
-                    },
-                    fragment: None,
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
-                    multisample: wgpu::MultisampleState::default(),
-                })
-            },
-            ship_shadows_pipeline: {
-                let ship_shadows_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("ship shadows pipeline layout"),
-                        bind_group_layouts: &[
-                            shadow_maps.light_projection_bind_group_layout(),
-                            &resources.ship_bgl,
-                        ],
-                        push_constant_ranges: &[],
-                    });
-
-                let vs_ship_shadows =
-                    wgpu::include_spirv!("../shaders/compiled/ship_shadows.vert.spv");
-                let vs_ship_shadows = device.create_shader_module(&vs_ship_shadows);
-
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("ship shadows pipeline"),
-                    layout: Some(&ship_shadows_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_ship_shadows,
-                        entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<Vertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-                        }],
-                    },
-                    fragment: None,
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
-                    multisample: wgpu::MultisampleState::default(),
-                })
-            },
-            ship_movement_pipeline: {
-                let ship_movement_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("ship movement pipeline layout"),
-                        bind_group_layouts: &[&resources.ship_bgl, &resources.ship_movement_bgl],
-                        push_constant_ranges: &[],
-                    });
-
-                let cs_ship_movement =
-                    wgpu::include_spirv!("../shaders/compiled/ship_movement.comp.spv");
-                let cs_ship_movement = device.create_shader_module(&cs_ship_movement);
-
-                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: Some("ship movement pipeline"),
-                    layout: Some(&ship_movement_pipeline_layout),
-                    module: &cs_ship_movement,
-                    entry_point: "main",
-                })
-            },
-        }
-    }
-}
-
 #[derive(Copy, Clone)]
 struct TonemapperParams {
     toe: f32,
@@ -1122,6 +690,7 @@ fn draw_ui(
     render_sun_dir: &mut bool,
     move_ships: &mut bool,
     render_ships: &mut bool,
+    render_ship_shadows: &mut bool,
     cascade_split_lambda: &mut f32,
     ship_movement_settings: &mut primitives::ShipMovementSettings,
 ) -> DirtyObjects {
@@ -1165,6 +734,7 @@ fn draw_ui(
 
     ui.checkbox(imgui::im_str!("Move Ships"), move_ships);
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
+    ui.checkbox(imgui::im_str!("Render Ship Shadows"), render_ship_shadows);
 
     dirty.csm |= imgui::Drag::new(imgui::im_str!("Cascade Split Lambda"))
         .range(0.0..=1.0)

@@ -112,7 +112,7 @@ void main() {
             break;
         case MODE_SHADOW_CASCADE:
             uint cascade_index = cascade_index(in_view_pos.z, csm.split_depths);
-            colour = debug_colour_by_cascade(colour, cascade_index);
+            colour *= debug_colour_for_cascade(cascade_index);
             break;
     }
 
