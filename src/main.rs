@@ -266,17 +266,15 @@ async fn run() -> anyhow::Result<()> {
             &tonemapper_uniform_buffer,
         );
 
-    let mut cascade_split_lambda = 0.0;
-
-    let camera_params = cascaded_shadow_maps::CameraParams {
-        projection_view: camera.perspective_view,
-        far_clip: scene.camera_z_far,
-        near_clip: scene.camera_z_near,
-    };
+    let mut split_cascades = [0.0, 0.4, 0.6, 1.0];
 
     cascaded_shadow_maps.update_params(
-        camera_params,
-        cascaded_shadow_maps::calculate_split_cascades(camera_params, cascade_split_lambda),
+        cascaded_shadow_maps::CameraParams {
+            projection_view: camera.perspective_view,
+            far_clip: scene.camera_z_far,
+            near_clip: scene.camera_z_near,
+        },
+        split_cascades,
         scene.sun_facing,
         &queue,
     );
@@ -329,18 +327,13 @@ async fn run() -> anyhow::Result<()> {
                     camera = scene.create_camera(width, height);
                     queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
 
-                    let camera_params = cascaded_shadow_maps::CameraParams {
-                        projection_view: camera.perspective_view,
-                        far_clip: scene.camera_z_far,
-                        near_clip: scene.camera_z_near,
-                    };
-
                     cascaded_shadow_maps.update_params(
-                        camera_params,
-                        cascaded_shadow_maps::calculate_split_cascades(
-                            camera_params,
-                            cascade_split_lambda,
-                        ),
+                        cascaded_shadow_maps::CameraParams {
+                            projection_view: camera.perspective_view,
+                            far_clip: scene.camera_z_far,
+                            near_clip: scene.camera_z_near,
+                        },
+                        split_cascades,
                         scene.sun_facing,
                         &queue,
                     );
@@ -531,7 +524,7 @@ async fn run() -> anyhow::Result<()> {
                                 &mut move_ships,
                                 &mut render_ships,
                                 &mut render_ship_shadows,
-                                &mut cascade_split_lambda,
+                                &mut split_cascades,
                                 &mut ship_movement_settings,
                             );
 
@@ -552,18 +545,13 @@ async fn run() -> anyhow::Result<()> {
                             }
 
                             if dirty.csm {
-                                let camera_params = cascaded_shadow_maps::CameraParams {
-                                    projection_view: camera.perspective_view,
-                                    far_clip: scene.camera_z_far,
-                                    near_clip: scene.camera_z_near,
-                                };
-
                                 cascaded_shadow_maps.update_params(
-                                    camera_params,
-                                    cascaded_shadow_maps::calculate_split_cascades(
-                                        camera_params,
-                                        cascade_split_lambda,
-                                    ),
+                                    cascaded_shadow_maps::CameraParams {
+                                        projection_view: camera.perspective_view,
+                                        far_clip: scene.camera_z_far,
+                                        near_clip: scene.camera_z_near,
+                                    },
+                                    split_cascades,
                                     scene.sun_facing,
                                     &queue,
                                 );
@@ -703,7 +691,7 @@ fn draw_ui(
     move_ships: &mut bool,
     render_ships: &mut bool,
     render_ship_shadows: &mut bool,
-    cascade_split_lambda: &mut f32,
+    split_cascades: &mut [f32; 4],
     ship_movement_settings: &mut primitives::ShipMovementSettings,
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
@@ -748,10 +736,15 @@ fn draw_ui(
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
     ui.checkbox(imgui::im_str!("Render Ship Shadows"), render_ship_shadows);
 
-    dirty.csm |= imgui::Drag::new(imgui::im_str!("Cascade Split Lambda"))
-        .range(0.0..=1.0)
-        .speed(0.005)
-        .build(&ui, cascade_split_lambda);
+    for i in 0..4 {
+        let lower_bound = if i == 0 { 0.0 } else { split_cascades[i - 1] };
+        let upper_bound = if i == 3 { 1.0 } else { split_cascades[i + 1] };
+
+        dirty.csm |= imgui::Drag::new(&imgui::im_str!("Split Cascade {}", i))
+            .range(lower_bound..=upper_bound)
+            .speed(0.01)
+            .build(&ui, &mut split_cascades[i]);
+    }
 
     dirty.ship_movement_settings |= imgui::Drag::new(imgui::im_str!("Ship Movement Bounds"))
         .range(0.0..=2.5)

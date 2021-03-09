@@ -10,13 +10,13 @@ uint cascade_index(float view_pos_z, vec2 splits) {
 }
 
 vec3 debug_colour_for_cascade(uint cascade_index) {
-	vec3 colours[3] = {
-		vec3(1.0, 0.25, 0.25),
-		vec3(0.25, 1.0, 0.25),
-		vec3(0.25, 0.25, 1.0)
-	};
+    vec3 colours[3] = {
+        vec3(1.0, 0.25, 0.25),
+        vec3(0.25, 1.0, 0.25),
+        vec3(0.25, 0.25, 1.0)
+    };
 
-	return colours[cascade_index];
+    return colours[cascade_index];
 }
 
 float percentage_closer_filtering(vec2 light_local, uint cascade_index, float comparison) {
@@ -56,9 +56,9 @@ float calculate_shadow(float view_pos_z, mat4 matrices[3], vec2 splits, vec3 fra
     vec2 flip_correction = vec2(0.5, -0.5);
     // compute texture coordinates for shadow lookup
     float proj_correction = 1.0 / transformed_coords.w;
-	vec2 light_local = transformed_coords.xy * flip_correction * proj_correction + vec2(0.5, 0.5);
+    vec2 light_local = transformed_coords.xy * flip_correction * proj_correction + vec2(0.5, 0.5);
     // do the lookup, using HW PCF and comparison
-	float bias = 0.005;
+    float bias = 0.005;
     float comparison = transformed_coords.z * proj_correction - bias;
 
     return percentage_closer_filtering(light_local, cascade_index, comparison);

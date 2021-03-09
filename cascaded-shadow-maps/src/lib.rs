@@ -197,7 +197,7 @@ impl CascadedShadowMaps {
     pub fn update_params(
         &self,
         camera: CameraParams,
-        cascade_splits: [f32; 3],
+        cascade_splits: [f32; 4],
         origin_to_light: Vec3,
         queue: &wgpu::Queue,
     ) {
@@ -232,11 +232,15 @@ struct Uniform {
 /// Calculate split depths based on view camera frustum
 ///
 /// Based on method presented in https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch10.html
-pub fn calculate_split_cascades(camera: CameraParams, cascade_split_lambda: f32) -> [f32; 3] {
-    let clip_range = camera.far_clip - camera.near_clip;
+pub fn calculate_split_cascades(
+    near_clip: f32,
+    far_clip: f32,
+    cascade_split_lambda: f32,
+) -> [f32; 4] {
+    let clip_range = far_clip - near_clip;
 
-    let min_z = camera.near_clip;
-    let max_z = camera.far_clip;
+    let min_z = near_clip;
+    let max_z = far_clip;
 
     let range = max_z - min_z;
     let ratio = max_z / min_z;
@@ -246,15 +250,15 @@ pub fn calculate_split_cascades(camera: CameraParams, cascade_split_lambda: f32)
         let log = min_z * ratio.powf(p);
         let uniform = min_z + range * p;
         let d = cascade_split_lambda * (log - uniform) + uniform;
-        (d - camera.near_clip) / clip_range
+        (d - near_clip) / clip_range
     };
-    [cascade_split(0), cascade_split(1), cascade_split(2)]
+    [0.0, cascade_split(0), cascade_split(1), cascade_split(2)]
 }
 
 // https://github.com/SaschaWillems/Vulkan/blob/5db9781d529467c4474bbc957ab5f1ee06126cf4/examples/shadowmappingcascade/shadowmappingcascade.cpp#L634-L638
 fn update_cascades(
     camera: CameraParams,
-    cascade_splits: [f32; 3],
+    cascade_splits: [f32; 4],
     origin_to_light: Vec3,
 ) -> Uniform {
     let clip_range = camera.far_clip - camera.near_clip;
@@ -329,9 +333,9 @@ fn update_cascades(
         (matrix, split_depth)
     };
 
-    let (matrix_1, split_depth_1) = calculate_matrix(0.0, cascade_splits[0]);
-    let (matrix_2, split_depth_2) = calculate_matrix(cascade_splits[0], cascade_splits[1]);
-    let (matrix_3, _) = calculate_matrix(cascade_splits[1], cascade_splits[2]);
+    let (matrix_1, split_depth_1) = calculate_matrix(cascade_splits[0], cascade_splits[1]);
+    let (matrix_2, split_depth_2) = calculate_matrix(cascade_splits[1], cascade_splits[2]);
+    let (matrix_3, _) = calculate_matrix(cascade_splits[2], cascade_splits[3]);
 
     Uniform {
         matrices: [matrix_1, matrix_2, matrix_3],
