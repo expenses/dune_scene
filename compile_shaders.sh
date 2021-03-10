@@ -7,7 +7,7 @@ glslc shaders/ship.vert -o shaders/compiled/ship.vert.spv
 glslc shaders/ship.frag -o shaders/compiled/ship.frag.spv
 
 glslc shaders/sun_dir.vert -o shaders/compiled/sun_dir.vert.spv
-glslc shaders/line.vert -o shaders/compiled/line.vert.spv
+glslc shaders/particles.vert -o shaders/compiled/particles.vert.spv
 
 glslc shaders/flat_colour.frag -o shaders/compiled/flat_colour.frag.spv
 
@@ -26,7 +26,7 @@ spirv-opt shaders/compiled/ship.vert.spv -O -o shaders/compiled/ship.vert.spv
 spirv-opt shaders/compiled/ship.frag.spv -O -o shaders/compiled/ship.frag.spv
 
 spirv-opt shaders/compiled/sun_dir.vert.spv -O -o shaders/compiled/sun_dir.vert.spv
-spirv-opt shaders/compiled/line.vert.spv -O -o shaders/compiled/line.vert.spv
+spirv-opt shaders/compiled/particles.vert.spv -O -o shaders/compiled/particles.vert.spv
 
 spirv-opt shaders/compiled/flat_colour.frag.spv -O -o shaders/compiled/flat_colour.frag.spv
 

@@ -1,6 +1,6 @@
 use crate::{DEPTH_FORMAT, FRAMEBUFFER_FORMAT};
 use cascaded_shadow_maps::CascadedShadowMaps;
-use primitives::{LineVertex, Vertex};
+use primitives::Vertex;
 
 /// All the permament resources that we can load before creating a window.
 pub struct RenderResources {
@@ -103,7 +103,11 @@ impl RenderResources {
             particles_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("particles bind group layout"),
                 entries: &[
-                    storage(0, wgpu::ShaderStage::COMPUTE, false),
+                    storage(
+                        0,
+                        wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
+                        false,
+                    ),
                     storage(1, wgpu::ShaderStage::COMPUTE, false),
                 ],
             }),
@@ -124,7 +128,7 @@ pub struct Pipelines {
     pub sun_dir_pipeline: wgpu::RenderPipeline,
     pub tonemap_pipeline: wgpu::RenderPipeline,
     pub ship_pipeline: wgpu::RenderPipeline,
-    pub line_pipeline: wgpu::RenderPipeline,
+    pub particles_pipeline: wgpu::RenderPipeline,
     pub scene_shadows_pipeline: wgpu::RenderPipeline,
     pub ship_shadows_pipeline: wgpu::RenderPipeline,
     pub ship_movement_pipeline: wgpu::ComputePipeline,
@@ -279,29 +283,32 @@ impl Pipelines {
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
-            line_pipeline: {
-                let vs_line = wgpu::include_spirv!("../shaders/compiled/line.vert.spv");
-                let vs_line = device.create_shader_module(&vs_line);
+            particles_pipeline: {
+                let vs_particles = wgpu::include_spirv!("../shaders/compiled/particles.vert.spv");
+                let vs_particles = device.create_shader_module(&vs_particles);
+
+                let particles_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("particles pipeline layout"),
+                        bind_group_layouts: &[&resources.main_bgl, &resources.particles_bgl],
+                        push_constant_ranges: &[],
+                    });
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("line pipeline"),
-                    layout: Some(&main_bind_group_pipeline_layout),
+                    label: Some("particles pipeline"),
+                    layout: Some(&particles_pipeline_layout),
                     vertex: wgpu::VertexState {
-                        module: &vs_line,
+                        module: &vs_particles,
                         entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<LineVertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float4],
-                        }],
+                        buffers: &[],
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &fs_flat_colour,
                         entry_point: "main",
-                        targets: &[display_format.into()],
+                        targets: &[FRAMEBUFFER_FORMAT.into()],
                     }),
                     primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::LineList,
+                        topology: wgpu::PrimitiveTopology::PointList,
                         ..Default::default()
                     },
                     depth_stencil: Some(wgpu::DepthStencilState {

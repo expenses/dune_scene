@@ -10,13 +10,26 @@ layout(set = 1, binding = 0) uniform ShipMovementSettingsUniform {
     ShipMovementSettings settings;
 };
 
-layout(set = 2, binding = 0) buffer writeonly ParticlesBuffer {
+layout(set = 2, binding = 0) writeonly buffer ParticlesBuffer {
     Particle particles[];
 };
 
 layout(set = 2, binding = 1) buffer ParticlesInfo {
     ParticlesBufferInfo particles_info;
 };
+
+const vec3 RIGHT_ENGINE_OFFSET = vec3(
+    -0.003607,
+    -0.0112,
+    0.012274
+);
+const vec3 LEFT_ENGINE_OFFSET = vec3(
+    RIGHT_ENGINE_OFFSET.x,
+    RIGHT_ENGINE_OFFSET.y,
+    -RIGHT_ENGINE_OFFSET.z
+);
+
+const uint PARTICLES_PER_SHIP = 2;
 
 mat3 rotation_matrix_y(float theta) {
     return mat3(
@@ -49,12 +62,13 @@ void main() {
 
     ships[index] = ship;
 
-    uint particle_index = (particles_info.offset + index) % particles.length();
+    uint particle_index = (particles_info.offset + index * PARTICLES_PER_SHIP) % particles.length();
 
-    particles[particle_index].position = ship.position;
+    particles[particle_index].position = ship.position + ship.y_rotation_matrix * LEFT_ENGINE_OFFSET;
+    particles[particle_index + 1].position = ship.position + ship.y_rotation_matrix * RIGHT_ENGINE_OFFSET;
 
     if (index == 0) {
-        particles_info.offset += ships.length();
+        particles_info.offset += ships.length() * PARTICLES_PER_SHIP;
     }
 }
 
