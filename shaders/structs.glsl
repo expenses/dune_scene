@@ -45,3 +45,12 @@ const uint TONEMAPPER_MODE_WASM_GAMMA_CORRECT = 3;
 struct ShipMovementSettings {
     float bounds;
 };
+
+struct ParticlesBufferInfo {
+    uint offset;
+};
+
+struct Particle {
+    vec3 position;
+    uint _padding;
+};

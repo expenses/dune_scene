@@ -134,3 +134,16 @@ pub struct LineVertex {
 pub struct ShipMovementSettings {
     pub bounds: f32,
 }
+
+#[repr(C)]
+#[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ParticlesBufferInfo {
+    pub offset: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Particle {
+    pub position: Vec3,
+    pub _padding: u32,
+}

@@ -10,6 +10,14 @@ layout(set = 1, binding = 0) uniform ShipMovementSettingsUniform {
     ShipMovementSettings settings;
 };
 
+layout(set = 2, binding = 0) buffer writeonly ParticlesBuffer {
+    Particle particles[];
+};
+
+layout(set = 2, binding = 1) buffer ParticlesInfo {
+    ParticlesBufferInfo particles_info;
+};
+
 mat3 rotation_matrix_y(float theta) {
     return mat3(
         cos(theta), 0, sin(theta),
@@ -40,5 +48,13 @@ void main() {
     ship.y_rotation_matrix = rotation_matrix_y(ship.facing);
 
     ships[index] = ship;
+
+    uint particle_index = (particles_info.offset + index) % particles.length();
+
+    particles[particle_index].position = ship.position;
+
+    if (index == 0) {
+        particles_info.offset += ships.length();
+    }
 }
 

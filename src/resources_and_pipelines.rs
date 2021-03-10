@@ -10,6 +10,7 @@ pub struct RenderResources {
     pub tonemap_bgl: wgpu::BindGroupLayout,
     pub ship_bgl: wgpu::BindGroupLayout,
     pub ship_movement_bgl: wgpu::BindGroupLayout,
+    pub particles_bgl: wgpu::BindGroupLayout,
     pub sampler: wgpu::Sampler,
 }
 
@@ -98,6 +99,13 @@ impl RenderResources {
             ship_movement_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("ship movement bind group layout"),
                 entries: &[uniform(0, wgpu::ShaderStage::COMPUTE)],
+            }),
+            particles_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("particles bind group layout"),
+                entries: &[
+                    storage(0, wgpu::ShaderStage::COMPUTE, false),
+                    storage(1, wgpu::ShaderStage::COMPUTE, false),
+                ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("linear sampler"),
@@ -426,7 +434,11 @@ impl Pipelines {
                 let ship_movement_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("ship movement pipeline layout"),
-                        bind_group_layouts: &[&resources.ship_bgl, &resources.ship_movement_bgl],
+                        bind_group_layouts: &[
+                            &resources.ship_bgl,
+                            &resources.ship_movement_bgl,
+                            &resources.particles_bgl,
+                        ],
                         push_constant_ranges: &[],
                     });
 

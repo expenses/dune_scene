@@ -125,6 +125,35 @@ async fn run() -> anyhow::Result<()> {
         }],
     });
 
+    let particles = vec![primitives::Particle::default(); num_ships as usize * 4];
+
+    let particles_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("particles buffer"),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(&particles),
+    });
+
+    let particles_buffer_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("particles info buffer"),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::bytes_of(&primitives::ParticlesBufferInfo::default()),
+    });
+
+    let particles_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("particles bind group"),
+        layout: &resources.particles_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: particles_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: particles_buffer_info.as_entire_binding(),
+            },
+        ],
+    });
+
     let mut ship_movement_settings = primitives::ShipMovementSettings { bounds: 2.5 };
 
     let ship_movement_settings_buffer =
@@ -351,6 +380,7 @@ async fn run() -> anyhow::Result<()> {
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
                         compute_pass.set_bind_group(0, &ship_bind_group, &[]);
                         compute_pass.set_bind_group(1, &ship_movement_bind_group, &[]);
+                        compute_pass.set_bind_group(2, &particles_bind_group, &[]);
                         compute_pass.dispatch(dispatch_count(100, 64), 1, 1);
                     }
 
