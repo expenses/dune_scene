@@ -138,9 +138,6 @@ impl Pipelines {
         resources: &RenderResources,
         shadow_maps: &CascadedShadowMaps,
     ) -> Self {
-        let fs_flat_colour = wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
-        let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
-
         let main_bind_group_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("main bind group pipeline layout"),
@@ -259,6 +256,10 @@ impl Pipelines {
                 let vs_sun_dir = wgpu::include_spirv!("../shaders/compiled/sun_dir.vert.spv");
                 let vs_sun_dir = device.create_shader_module(&vs_sun_dir);
 
+                let fs_flat_colour =
+                    wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
+                let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
+
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("sun dir pipeline"),
                     layout: Some(&main_bind_group_pipeline_layout),
@@ -291,6 +292,10 @@ impl Pipelines {
                 let vs_particles = wgpu::include_spirv!("../shaders/compiled/particles.vert.spv");
                 let vs_particles = device.create_shader_module(&vs_particles);
 
+                let fs_alpha_circle =
+                    wgpu::include_spirv!("../shaders/compiled/alpha_circle.frag.spv");
+                let fs_alpha_circle = device.create_shader_module(&fs_alpha_circle);
+
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("particles pipeline"),
                     layout: Some(&particles_pipeline_layout),
@@ -300,14 +305,23 @@ impl Pipelines {
                         buffers: &[],
                     },
                     fragment: Some(wgpu::FragmentState {
-                        module: &fs_flat_colour,
+                        module: &fs_alpha_circle,
                         entry_point: "main",
-                        targets: &[FRAMEBUFFER_FORMAT.into()],
+                        targets: &[wgpu::ColorTargetState {
+                            format: FRAMEBUFFER_FORMAT,
+                            color_blend: wgpu::BlendState {
+                                src_factor: wgpu::BlendFactor::SrcAlpha,
+                                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha_blend: wgpu::BlendState::REPLACE,
+                            write_mask: wgpu::ColorWrite::ALL,
+                        }],
                     }),
                     primitive: wgpu::PrimitiveState::default(),
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
+                        depth_write_enabled: false,
                         depth_compare: wgpu::CompareFunction::Less,
                         stencil: wgpu::StencilState::default(),
                         bias: wgpu::DepthBiasState::default(),
