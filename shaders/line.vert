@@ -1,6 +1,6 @@
 #version 450
 
-#include "structs.glsl"
+#include "includes/structs.glsl"
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec4 colour;

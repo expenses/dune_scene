@@ -1,8 +1,8 @@
 #version 450
 
-#include "brdf.glsl"
-#include "utils.glsl"
-#include "structs.glsl"
+#include "includes/brdf.glsl"
+#include "includes/utils.glsl"
+#include "includes/structs.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec2 in_uv;
@@ -32,7 +32,7 @@ layout(set = 3, binding = 2) uniform CascadedShadowMapUniform {
 
 #define SHADOW_SAMPLER shadow_sampler
 #define SHADOW_TEXTURE_ARRAY shadow_texture_array
-#include "shadows.glsl"
+#include "includes/shadows.glsl"
 
 layout(location = 0) out vec4 out_colour;
 
