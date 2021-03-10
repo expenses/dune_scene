@@ -62,7 +62,7 @@ impl RenderResources {
             main_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("bind group layout"),
                 entries: &[
-                    uniform(0, wgpu::ShaderStage::VERTEX),
+                    uniform(0, wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::COMPUTE),
                     uniform(1, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::VERTEX),
                     sampler(2, wgpu::ShaderStage::FRAGMENT),
                     uniform(3, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::COMPUTE),
@@ -104,11 +104,7 @@ impl RenderResources {
                         wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
                         false,
                     ),
-                    storage(
-                        1,
-                        wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
-                        false,
-                    ),
+                    storage(1, wgpu::ShaderStage::COMPUTE, false),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
@@ -132,6 +128,7 @@ pub struct Pipelines {
     pub scene_shadows_pipeline: wgpu::RenderPipeline,
     pub ship_shadows_pipeline: wgpu::RenderPipeline,
     pub ship_movement_pipeline: wgpu::ComputePipeline,
+    pub particles_movement_pipeline: wgpu::ComputePipeline,
 }
 
 impl Pipelines {
@@ -148,6 +145,13 @@ impl Pipelines {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("main bind group pipeline layout"),
                 bind_group_layouts: &[&resources.main_bgl],
+                push_constant_ranges: &[],
+            });
+
+        let particles_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("particles pipeline layout"),
+                bind_group_layouts: &[&resources.main_bgl, &resources.particles_bgl],
                 push_constant_ranges: &[],
             });
 
@@ -286,13 +290,6 @@ impl Pipelines {
             particles_pipeline: {
                 let vs_particles = wgpu::include_spirv!("../shaders/compiled/particles.vert.spv");
                 let vs_particles = device.create_shader_module(&vs_particles);
-
-                let particles_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("particles pipeline layout"),
-                        bind_group_layouts: &[&resources.main_bgl, &resources.particles_bgl],
-                        push_constant_ranges: &[],
-                    });
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("particles pipeline"),
@@ -454,6 +451,18 @@ impl Pipelines {
                     label: Some("ship movement pipeline"),
                     layout: Some(&ship_movement_pipeline_layout),
                     module: &cs_ship_movement,
+                    entry_point: "main",
+                })
+            },
+            particles_movement_pipeline: {
+                let cs_particles_movement =
+                    wgpu::include_spirv!("../shaders/compiled/particles_movement.comp.spv");
+                let cs_particles_movement = device.create_shader_module(&cs_particles_movement);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("particles movement pipeline"),
+                    layout: Some(&particles_pipeline_layout),
+                    module: &cs_particles_movement,
                     entry_point: "main",
                 })
             },
