@@ -364,14 +364,12 @@ async fn run() -> anyhow::Result<()> {
             Event::MainEventsCleared => window.request_redraw(),
             Event::RedrawRequested(_) => match swap_chain.get_current_frame() {
                 Ok(frame) => {
-                    if move_ships {
-                        time_since_start += 1.0 / 60.0;
-                        queue.write_buffer(
-                            &time_buffer,
-                            0,
-                            bytemuck::bytes_of(&primitives::Time { time_since_start }),
-                        );
-                    }
+                    time_since_start += 1.0 / 60.0;
+                    queue.write_buffer(
+                        &time_buffer,
+                        0,
+                        bytemuck::bytes_of(&primitives::Time { time_since_start }),
+                    );
 
                     let mut encoder =
                         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
