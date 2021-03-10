@@ -9,7 +9,6 @@ pub struct RenderResources {
     pub double_texture_bgl: wgpu::BindGroupLayout,
     pub tonemap_bgl: wgpu::BindGroupLayout,
     pub ship_bgl: wgpu::BindGroupLayout,
-    pub ship_movement_bgl: wgpu::BindGroupLayout,
     pub particles_bgl: wgpu::BindGroupLayout,
     pub sampler: wgpu::Sampler,
 }
@@ -66,7 +65,7 @@ impl RenderResources {
                     uniform(0, wgpu::ShaderStage::VERTEX),
                     uniform(1, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::VERTEX),
                     sampler(2, wgpu::ShaderStage::FRAGMENT),
-                    uniform(3, wgpu::ShaderStage::FRAGMENT),
+                    uniform(3, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::COMPUTE),
                 ],
             }),
             single_texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -95,10 +94,6 @@ impl RenderResources {
                     wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::COMPUTE,
                     false,
                 )],
-            }),
-            ship_movement_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("ship movement bind group layout"),
-                entries: &[uniform(0, wgpu::ShaderStage::COMPUTE)],
             }),
             particles_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("particles bind group layout"),
@@ -442,8 +437,8 @@ impl Pipelines {
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("ship movement pipeline layout"),
                         bind_group_layouts: &[
+                            &resources.main_bgl,
                             &resources.ship_bgl,
-                            &resources.ship_movement_bgl,
                             &resources.particles_bgl,
                         ],
                         push_constant_ranges: &[],

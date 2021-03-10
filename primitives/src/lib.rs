@@ -50,6 +50,7 @@ pub struct Settings {
     pub roughness: f32,
     pub specular_factor: f32,
     pub mode: u32,
+    pub ship_movement_bounds: f32,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -120,12 +121,6 @@ pub struct Transform {
     pub _rotation_matrix: [Vec4; 3],
     pub rotation_speed: f32,
     pub _end_padding: [u32; 3],
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ShipMovementSettings {
-    pub bounds: f32,
 }
 
 #[repr(C)]

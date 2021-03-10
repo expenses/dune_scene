@@ -6,6 +6,7 @@ struct Settings {
     float roughness;
     float specular_factor;
     uint mode;
+    float ship_movement_bounds;
 };
 
 const uint MODE_FULL = 0;
@@ -41,10 +42,6 @@ const uint TONEMAPPER_MODE_ON = 0;
 const uint TONEMAPPER_MODE_NO_CROSSTALK = 1;
 const uint TONEMAPPER_MODE_OFF = 2;
 const uint TONEMAPPER_MODE_WASM_GAMMA_CORRECT = 3;
-
-struct ShipMovementSettings {
-    float bounds;
-};
 
 struct ParticlesBufferInfo {
     uint offset;
