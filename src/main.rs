@@ -99,8 +99,8 @@ async fn run() -> anyhow::Result<()> {
 
     let num_ships = 100;
     let ship_positions: Vec<_> = (0..num_ships)
-        .map(|_| primitives::Transform {
-            translation: Vec3::new(
+        .map(|_| primitives::Ship {
+            position: Vec3::new(
                 rng.gen_range(-2.0..=2.0),
                 rng.gen_range(0.49..=0.51),
                 rng.gen_range(-2.0..=2.0),
@@ -473,7 +473,7 @@ async fn run() -> anyhow::Result<()> {
                     render_pass.set_pipeline(&pipelines.particles_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);
                     render_pass.set_bind_group(1, &particles_bind_group, &[]);
-                    render_pass.draw(0..num_particles, 0..1);
+                    render_pass.draw(0..num_particles * 6, 0..1);
 
                     render_pass.set_pipeline(&pipelines.scene_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);

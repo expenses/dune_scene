@@ -104,7 +104,11 @@ impl RenderResources {
                         wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
                         false,
                     ),
-                    storage(1, wgpu::ShaderStage::COMPUTE, false),
+                    storage(
+                        1,
+                        wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
+                        false,
+                    ),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
@@ -303,10 +307,7 @@ impl Pipelines {
                         entry_point: "main",
                         targets: &[FRAMEBUFFER_FORMAT.into()],
                     }),
-                    primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::PointList,
-                        ..Default::default()
-                    },
+                    primitive: wgpu::PrimitiveState::default(),
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DEPTH_FORMAT,
                         depth_write_enabled: true,

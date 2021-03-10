@@ -38,6 +38,7 @@ pub struct Vertex {
 pub struct Camera {
     pub perspective_view: Mat4,
     pub view: Mat4,
+    pub perspective: Mat4,
     pub position: Vec3,
 }
 
@@ -115,8 +116,8 @@ fn enumerate<T: Copy>(slice: &'static [T]) -> impl Iterator<Item = (T, u32)> {
 
 #[repr(C)]
 #[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Transform {
-    pub translation: Vec3,
+pub struct Ship {
+    pub position: Vec3,
     pub y_rotation: f32,
     pub _rotation_matrix: [Vec4; 3],
     pub rotation_speed: f32,
@@ -127,6 +128,7 @@ pub struct Transform {
 #[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ParticlesBufferInfo {
     pub offset: u32,
+    pub particle_duration: f32,
 }
 
 #[repr(C)]
