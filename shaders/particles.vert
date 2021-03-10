@@ -14,7 +14,7 @@ layout(set = 1, binding = 0) readonly buffer ParticlesBuffer {
     Particle particles[];
 };
 
-layout(location = 0) out vec3 out_colour;
+layout(location = 0) out vec4 out_colour;
 layout(location = 1) out vec2 out_uv;
 
 const vec2 UVS[6] = {
@@ -34,9 +34,10 @@ void main() {
     // shader, `time_alive_percentage` will become > 1.0 which is just black.
     // This is more fun.
     float red = fract(1.0 - particle.time_alive_percentage);
-    out_colour = vec3(red, 0.0, 0.0);
+    float alpha = fract(1.0 - particle.time_alive_percentage * 0.5);
+    out_colour = vec4(red, 0.0, 0.0, alpha);
 
-    float half_size = 0.01 * particle.time_alive_percentage;
+    float half_size = 0.01 * min(particle.time_alive_percentage, 1.0);
 
     vec2 uv = UVS[gl_VertexIndex % 6];
 
