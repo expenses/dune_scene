@@ -126,7 +126,8 @@ async fn run() -> anyhow::Result<()> {
         }],
     });
 
-    let num_particles = num_ships * 40;
+    let particles_per_ship = 50 * 2;
+    let num_particles = num_ships * particles_per_ship;
     let particles = vec![primitives::Particle::default(); num_particles as usize];
 
     let particles_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

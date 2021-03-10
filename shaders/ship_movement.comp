@@ -1,6 +1,7 @@
 #version 450
 
 #include "includes/structs.glsl"
+#include "includes/utils.glsl"
 
 layout(set = 0, binding = 3) uniform SettingsUniform {
     Settings settings;
@@ -45,10 +46,19 @@ mat3 rotation_matrix_y(float theta) {
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
+vec3 randomish_unitish_vector(vec3 seed) {
+    return normalize(vec3(
+        random(seed.xy),
+        random(seed.yz),
+        random(seed.zx)
+    ));
+}
+
 void spawn_particle(uint index, vec3 position) {
     Particle particle;
-    particle.position = position;
+    particle.initial_position = position;
     particle.time_spawned = time.time_since_start;
+    particle.velocity = randomish_unitish_vector(position) * 0.025;
 
     particles[index] = particle;
 }

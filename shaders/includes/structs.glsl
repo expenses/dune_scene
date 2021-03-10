@@ -48,8 +48,9 @@ struct ParticlesBufferInfo {
 };
 
 struct Particle {
-    vec3 position;
+    vec3 initial_position;
     float time_spawned;
+    vec3 velocity;
 };
 
 struct Time {

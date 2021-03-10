@@ -16,15 +16,19 @@ layout(set = 1, binding = 0) readonly buffer ParticlesBuffer {
 
 layout(location = 0) out vec4 out_colour;
 
+const uint PARTICLES_PER_SHIP = 50;
+
 void main() {
     Particle particle = particles[gl_VertexIndex];
 
     float time_alive = time.time_since_start - particle.time_spawned;
-    float duration = 20.0 / 60.0;
+    float duration = PARTICLES_PER_SHIP / 60.0;
     float time_alive_percentage = time_alive / duration;
+
+    vec3 position = particle.initial_position + time_alive * particle.velocity;
 
     out_colour = vec4(1.0 - time_alive_percentage, 0.0, 0.0, 1.0);
 
-    gl_Position = camera.perspective_view * vec4(particle.position, 1.0);
+    gl_Position = camera.perspective_view * vec4(position, 1.0);
     gl_PointSize = 2.0;
 }
