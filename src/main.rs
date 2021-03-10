@@ -198,6 +198,15 @@ async fn run() -> anyhow::Result<()> {
         contents: bytemuck::bytes_of(&camera),
     });
 
+    let mut time_since_start = 0.0;
+    let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("time buffer"),
+        usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        contents: bytemuck::bytes_of(&primitives::Time {
+            time_since_start: 0.0,
+        }),
+    });
+
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("bind group"),
         layout: &resources.main_bgl,
@@ -217,6 +226,10 @@ async fn run() -> anyhow::Result<()> {
             wgpu::BindGroupEntry {
                 binding: 3,
                 resource: settings_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: time_buffer.as_entire_binding(),
             },
         ],
     });
@@ -350,6 +363,13 @@ async fn run() -> anyhow::Result<()> {
             Event::MainEventsCleared => window.request_redraw(),
             Event::RedrawRequested(_) => match swap_chain.get_current_frame() {
                 Ok(frame) => {
+                    time_since_start += 1.0 / 60.0;
+                    queue.write_buffer(
+                        &time_buffer,
+                        0,
+                        bytemuck::bytes_of(&primitives::Time { time_since_start }),
+                    );
+
                     let mut encoder =
                         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                             label: Some("render encoder"),

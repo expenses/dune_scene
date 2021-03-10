@@ -6,6 +6,10 @@ layout(set = 0, binding = 3) uniform SettingsUniform {
     Settings settings;
 };
 
+layout(set = 0, binding = 4) uniform TimeBuffer {
+    Time time;
+};
+
 layout(set = 1, binding = 0) buffer Ships {
     Ship ships[];
 };
@@ -64,8 +68,16 @@ void main() {
 
     uint particle_index = (particles_info.offset + index * PARTICLES_PER_SHIP) % particles.length();
 
-    particles[particle_index].position = ship.position + ship.y_rotation_matrix * LEFT_ENGINE_OFFSET;
-    particles[particle_index + 1].position = ship.position + ship.y_rotation_matrix * RIGHT_ENGINE_OFFSET;
+    Particle left;
+    left.position = ship.position + ship.y_rotation_matrix * LEFT_ENGINE_OFFSET;
+    left.time_spawned = time.time_since_start;
+
+    Particle right;
+    right.position = ship.position + ship.y_rotation_matrix * RIGHT_ENGINE_OFFSET;
+    right.time_spawned = time.time_since_start;
+
+    particles[particle_index] = left;
+    particles[particle_index + 1] = right;
 
     if (index == 0) {
         particles_info.offset += ships.length() * PARTICLES_PER_SHIP;

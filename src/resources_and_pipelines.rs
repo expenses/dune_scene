@@ -66,6 +66,7 @@ impl RenderResources {
                     uniform(1, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::VERTEX),
                     sampler(2, wgpu::ShaderStage::FRAGMENT),
                     uniform(3, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::COMPUTE),
+                    uniform(4, wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX),
                 ],
             }),
             single_texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

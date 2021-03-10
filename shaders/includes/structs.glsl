@@ -49,5 +49,9 @@ struct ParticlesBufferInfo {
 
 struct Particle {
     vec3 position;
-    uint _padding;
+    float time_spawned;
+};
+
+struct Time {
+    float time_since_start;
 };
