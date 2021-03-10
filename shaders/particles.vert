@@ -23,11 +23,14 @@ void main() {
 
     float time_alive = time.time_since_start - particle.time_spawned;
     float duration = PARTICLES_PER_SHIP / 60.0;
-    float time_alive_percentage = time_alive / duration;
-
     vec3 position = particle.initial_position + time_alive * particle.velocity;
 
-    out_colour = vec4(1.0 - time_alive_percentage, 0.0, 0.0, 1.0);
+    float time_alive_percentage = time_alive / duration;
+    // Using `fract` here is just because if you disable the ship movement
+    // shader, `time_alive_percentage` will become > 1.0 which is just black.
+    // This is more fun.
+    float red = fract(1.0 - time_alive_percentage);
+    out_colour = vec4(red, 0.0, 0.0, 1.0);
 
     gl_Position = camera.perspective_view * vec4(position, 1.0);
     gl_PointSize = 2.0;

@@ -44,13 +44,11 @@ mat3 rotation_matrix_y(float theta) {
     );
 }
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-
-vec3 randomish_unitish_vector(vec3 seed) {
+vec3 randomish_unit_vector(vec3 seed) {
     return normalize(vec3(
-        random(seed.xy),
-        random(seed.yz),
-        random(seed.zx)
+        random(seed.xy) - 0.5,
+        random(seed.yz) - 0.5,
+        random(seed.zx) - 0.5
     ));
 }
 
@@ -58,10 +56,12 @@ void spawn_particle(uint index, vec3 position) {
     Particle particle;
     particle.initial_position = position;
     particle.time_spawned = time.time_since_start;
-    particle.velocity = randomish_unitish_vector(position) * 0.025;
+    particle.velocity = randomish_unit_vector(position) * 0.025;
 
     particles[index] = particle;
 }
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
     uint index = gl_GlobalInvocationID.x;
