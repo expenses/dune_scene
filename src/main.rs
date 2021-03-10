@@ -126,7 +126,8 @@ async fn run() -> anyhow::Result<()> {
         }],
     });
 
-    let num_particles = num_ships * 40;
+    let particles_per_ship = 50 * 2;
+    let num_particles = num_ships * particles_per_ship;
     let particles = vec![primitives::Particle::default(); num_particles as usize];
 
     let particles_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -391,7 +392,7 @@ async fn run() -> anyhow::Result<()> {
                         compute_pass.set_bind_group(0, &bind_group, &[]);
                         compute_pass.set_bind_group(1, &ship_bind_group, &[]);
                         compute_pass.set_bind_group(2, &particles_bind_group, &[]);
-                        compute_pass.dispatch(dispatch_count(100, 64), 1, 1);
+                        compute_pass.dispatch(dispatch_count(num_ships, 64), 1, 1);
                     }
 
                     let labels = ["near shadow pass", "middle shadow pass", "far shadow pass"];
@@ -454,11 +455,6 @@ async fn run() -> anyhow::Result<()> {
                         ),
                     });
 
-                    render_pass.set_pipeline(&pipelines.particles_pipeline);
-                    render_pass.set_bind_group(0, &bind_group, &[]);
-                    render_pass.set_bind_group(1, &particles_bind_group, &[]);
-                    render_pass.draw(0..num_particles, 0..1);
-
                     if render_ships {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);
                         render_pass.set_bind_group(0, &bind_group, &[]);
@@ -473,6 +469,11 @@ async fn run() -> anyhow::Result<()> {
                         render_pass.set_index_buffer(ship.indices.slice(..), INDEX_FORMAT);
                         render_pass.draw_indexed(0..ship.num_indices, 0, 0..num_ships);
                     }
+
+                    render_pass.set_pipeline(&pipelines.particles_pipeline);
+                    render_pass.set_bind_group(0, &bind_group, &[]);
+                    render_pass.set_bind_group(1, &particles_bind_group, &[]);
+                    render_pass.draw(0..num_particles, 0..1);
 
                     render_pass.set_pipeline(&pipelines.scene_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);

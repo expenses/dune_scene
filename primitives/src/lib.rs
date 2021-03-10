@@ -133,6 +133,8 @@ pub struct ParticlesBufferInfo {
 #[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Particle {
     pub position: Vec3,
+    pub time_spawned: f32,
+    pub velocity: Vec3,
     pub _padding: u32,
 }
 
