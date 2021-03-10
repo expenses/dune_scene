@@ -89,7 +89,7 @@ void main() {
     spawn_particle(particle_index,      ship.position + ship.y_rotation_matrix * LEFT_ENGINE_OFFSET);
     spawn_particle(particle_index + 1,  ship.position + ship.y_rotation_matrix * RIGHT_ENGINE_OFFSET);
 
-    // This info should only be updated once per invocation..
+    // This info should only be updated once per invocation.
     if (index == 0) {
         particles_info.offset += ships.length() * PARTICLES_PER_SHIP;
         // Just in case the number of ships / particles has changed.

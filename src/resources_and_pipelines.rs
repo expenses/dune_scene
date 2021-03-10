@@ -307,10 +307,7 @@ impl Pipelines {
                         entry_point: "main",
                         targets: &[FRAMEBUFFER_FORMAT.into()],
                     }),
-                    primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::PointList,
-                        ..Default::default()
-                    },
+                    primitive: wgpu::PrimitiveState::default(),
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DEPTH_FORMAT,
                         depth_write_enabled: true,

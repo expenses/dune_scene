@@ -23,6 +23,7 @@ struct CSM {
 struct Camera {
     mat4 perspective_view;
     mat4 view;
+    mat4 perspective;
     vec3 position;
 };
 
