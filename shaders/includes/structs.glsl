@@ -45,6 +45,7 @@ const uint TONEMAPPER_MODE_WASM_GAMMA_CORRECT = 3;
 
 struct ParticlesBufferInfo {
     uint offset;
+    float particle_duration;
 };
 
 struct Particle {

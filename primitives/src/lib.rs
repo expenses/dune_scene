@@ -127,6 +127,7 @@ pub struct Transform {
 #[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ParticlesBufferInfo {
     pub offset: u32,
+    pub particle_duration: f32,
 }
 
 #[repr(C)]

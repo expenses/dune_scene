@@ -104,7 +104,11 @@ impl RenderResources {
                         wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
                         false,
                     ),
-                    storage(1, wgpu::ShaderStage::COMPUTE, false),
+                    storage(
+                        1,
+                        wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
+                        false,
+                    ),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
