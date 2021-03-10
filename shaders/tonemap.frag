@@ -1,6 +1,6 @@
 #version 450
 
-#include "structs.glsl"
+#include "includes/structs.glsl"
 
 layout(location = 0) in vec2 uv;
 

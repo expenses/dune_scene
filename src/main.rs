@@ -67,6 +67,7 @@ async fn run() -> anyhow::Result<()> {
         roughness: 0.207,
         mode: primitives::Mode::Full as u32,
         specular_factor: 1.0,
+        ship_movement_bounds: 2.5,
     };
 
     let settings_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -125,22 +126,34 @@ async fn run() -> anyhow::Result<()> {
         }],
     });
 
-    let mut ship_movement_settings = primitives::ShipMovementSettings { bounds: 2.5 };
+    let num_particles = num_ships * 40;
+    let particles = vec![primitives::Particle::default(); num_particles as usize];
 
-    let ship_movement_settings_buffer =
-        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("ship movement settings buffer"),
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            contents: bytemuck::bytes_of(&ship_movement_settings),
-        });
+    let particles_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("particles buffer"),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(&particles),
+    });
 
-    let ship_movement_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("ship movement bind group"),
-        layout: &resources.ship_movement_bgl,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: ship_movement_settings_buffer.as_entire_binding(),
-        }],
+    let particles_buffer_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("particles info buffer"),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::bytes_of(&primitives::ParticlesBufferInfo::default()),
+    });
+
+    let particles_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("particles bind group"),
+        layout: &resources.particles_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: particles_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: particles_buffer_info.as_entire_binding(),
+            },
+        ],
     });
 
     let scene_bytes = include_bytes!("../models/dune.glb");
@@ -185,6 +198,15 @@ async fn run() -> anyhow::Result<()> {
         contents: bytemuck::bytes_of(&camera),
     });
 
+    let mut time_since_start = 0.0;
+    let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("time buffer"),
+        usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        contents: bytemuck::bytes_of(&primitives::Time {
+            time_since_start: 0.0,
+        }),
+    });
+
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("bind group"),
         layout: &resources.main_bgl,
@@ -204,6 +226,10 @@ async fn run() -> anyhow::Result<()> {
             wgpu::BindGroupEntry {
                 binding: 3,
                 resource: settings_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: time_buffer.as_entire_binding(),
             },
         ],
     });
@@ -343,6 +369,13 @@ async fn run() -> anyhow::Result<()> {
             Event::MainEventsCleared => window.request_redraw(),
             Event::RedrawRequested(_) => match swap_chain.get_current_frame() {
                 Ok(frame) => {
+                    time_since_start += 1.0 / 60.0;
+                    queue.write_buffer(
+                        &time_buffer,
+                        0,
+                        bytemuck::bytes_of(&primitives::Time { time_since_start }),
+                    );
+
                     let mut encoder =
                         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                             label: Some("render encoder"),
@@ -355,8 +388,9 @@ async fn run() -> anyhow::Result<()> {
                             });
 
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
-                        compute_pass.set_bind_group(0, &ship_bind_group, &[]);
-                        compute_pass.set_bind_group(1, &ship_movement_bind_group, &[]);
+                        compute_pass.set_bind_group(0, &bind_group, &[]);
+                        compute_pass.set_bind_group(1, &ship_bind_group, &[]);
+                        compute_pass.set_bind_group(2, &particles_bind_group, &[]);
                         compute_pass.dispatch(dispatch_count(100, 64), 1, 1);
                     }
 
@@ -419,6 +453,11 @@ async fn run() -> anyhow::Result<()> {
                             },
                         ),
                     });
+
+                    render_pass.set_pipeline(&pipelines.particles_pipeline);
+                    render_pass.set_bind_group(0, &bind_group, &[]);
+                    render_pass.set_bind_group(1, &particles_bind_group, &[]);
+                    render_pass.draw(0..num_particles, 0..1);
 
                     if render_ships {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);
@@ -525,15 +564,10 @@ async fn run() -> anyhow::Result<()> {
                                 &mut render_ships,
                                 &mut render_ship_shadows,
                                 &mut split_cascades,
-                                &mut ship_movement_settings,
                             );
 
                             if dirty.settings {
-                                queue.write_buffer(
-                                    &settings_buffer,
-                                    0,
-                                    bytemuck::bytes_of(&settings),
-                                );
+                                queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
                             }
 
                             if dirty.tonemapper {
@@ -554,14 +588,6 @@ async fn run() -> anyhow::Result<()> {
                                     split_cascades,
                                     scene.sun_facing,
                                     &queue,
-                                );
-                            };
-
-                            if dirty.ship_movement_settings {
-                                queue.write_buffer(
-                                    &ship_movement_settings_buffer,
-                                    0,
-                                    bytemuck::bytes_of(&ship_movement_settings),
                                 );
                             }
 
@@ -692,7 +718,6 @@ fn draw_ui(
     render_ships: &mut bool,
     render_ship_shadows: &mut bool,
     split_cascades: &mut [f32; 4],
-    ship_movement_settings: &mut primitives::ShipMovementSettings,
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
 
@@ -746,10 +771,10 @@ fn draw_ui(
             .build(&ui, &mut split_cascades[i]);
     }
 
-    dirty.ship_movement_settings |= imgui::Drag::new(imgui::im_str!("Ship Movement Bounds"))
+    dirty.settings |= imgui::Drag::new(imgui::im_str!("Ship Movement Bounds"))
         .range(0.0..=2.5)
         .speed(0.01)
-        .build(&ui, &mut ship_movement_settings.bounds);
+        .build(&ui, &mut settings.ship_movement_bounds);
 
     for mode in primitives::TonemapperMode::iter() {
         dirty.tonemapper |= ui.radio_button(
@@ -792,7 +817,6 @@ struct DirtyObjects {
     settings: bool,
     tonemapper: bool,
     csm: bool,
-    ship_movement_settings: bool,
 }
 
 const fn dispatch_count(num: u32, group_size: u32) -> u32 {

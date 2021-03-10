@@ -50,6 +50,7 @@ pub struct Settings {
     pub roughness: f32,
     pub specular_factor: f32,
     pub mode: u32,
+    pub ship_movement_bounds: f32,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -123,14 +124,20 @@ pub struct Transform {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LineVertex {
-    pub position: Vec3,
-    pub colour: Vec4,
+#[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ParticlesBufferInfo {
+    pub offset: u32,
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ShipMovementSettings {
-    pub bounds: f32,
+#[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Particle {
+    pub position: Vec3,
+    pub _padding: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Time {
+    pub time_since_start: f32,
 }

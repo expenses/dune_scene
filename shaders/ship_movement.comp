@@ -1,14 +1,39 @@
 #version 450
 
-#include "structs.glsl"
+#include "includes/structs.glsl"
 
-layout(set = 0, binding = 0) buffer Ships {
+layout(set = 0, binding = 3) uniform SettingsUniform {
+    Settings settings;
+};
+
+layout(set = 0, binding = 4) uniform TimeBuffer {
+    Time time;
+};
+
+layout(set = 1, binding = 0) buffer Ships {
     Ship ships[];
 };
 
-layout(set = 1, binding = 0) uniform ShipMovementSettingsUniform {
-    ShipMovementSettings settings;
+layout(set = 2, binding = 0) writeonly buffer ParticlesBuffer {
+    Particle particles[];
 };
+
+layout(set = 2, binding = 1) buffer ParticlesInfo {
+    ParticlesBufferInfo particles_info;
+};
+
+const vec3 RIGHT_ENGINE_OFFSET = vec3(
+    -0.003607,
+    -0.0112,
+    0.012274
+);
+const vec3 LEFT_ENGINE_OFFSET = vec3(
+    RIGHT_ENGINE_OFFSET.x,
+    RIGHT_ENGINE_OFFSET.y,
+    -RIGHT_ENGINE_OFFSET.z
+);
+
+const uint PARTICLES_PER_SHIP = 2;
 
 mat3 rotation_matrix_y(float theta) {
     return mat3(
@@ -33,12 +58,29 @@ void main() {
     ship.position += vec3(cos(ship.facing), 0.0, sin(ship.facing)) * 0.005;
 
     vec2 ship_horizontal = ship.position.xz;
-    bvec2 is_over_bounds = greaterThan(abs(ship_horizontal), vec2(settings.bounds));
-    vec2 offset = vec2(is_over_bounds) * sign(ship_horizontal) * (settings.bounds * 2.0);
+    bvec2 is_over_bounds = greaterThan(abs(ship_horizontal), vec2(settings.ship_movement_bounds));
+    vec2 offset = vec2(is_over_bounds) * sign(ship_horizontal) * (settings.ship_movement_bounds * 2.0);
     ship.position.xz = ship_horizontal - offset;
 
     ship.y_rotation_matrix = rotation_matrix_y(ship.facing);
 
     ships[index] = ship;
+
+    uint particle_index = (particles_info.offset + index * PARTICLES_PER_SHIP) % particles.length();
+
+    Particle left;
+    left.position = ship.position + ship.y_rotation_matrix * LEFT_ENGINE_OFFSET;
+    left.time_spawned = time.time_since_start;
+
+    Particle right;
+    right.position = ship.position + ship.y_rotation_matrix * RIGHT_ENGINE_OFFSET;
+    right.time_spawned = time.time_since_start;
+
+    particles[particle_index] = left;
+    particles[particle_index + 1] = right;
+
+    if (index == 0) {
+        particles_info.offset += ships.length() * PARTICLES_PER_SHIP;
+    }
 }
 
