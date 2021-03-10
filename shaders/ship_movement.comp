@@ -54,8 +54,8 @@ vec3 randomish_unit_vector(vec3 seed) {
 
 void spawn_particle(uint index, vec3 position) {
     Particle particle;
-    particle.initial_position = position;
-    particle.time_spawned = time.time_since_start;
+    particle.position = position;
+    particle.time_alive_percentage = 0.0;
     particle.velocity = randomish_unit_vector(position) * 0.025;
 
     particles[index] = particle;

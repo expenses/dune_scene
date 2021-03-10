@@ -137,11 +137,14 @@ pub struct Particle {
     pub position: Vec3,
     pub time_spawned: f32,
     pub velocity: Vec3,
-    pub _padding: u32,
+    pub _padding_0: u32,
+    pub _view_space_position: Vec3,
+    pub _padding_1: u32,
 }
 
 #[repr(C)]
 #[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Time {
     pub time_since_start: f32,
+    pub delta_time: f32,
 }

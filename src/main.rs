@@ -205,6 +205,7 @@ async fn run() -> anyhow::Result<()> {
         usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         contents: bytemuck::bytes_of(&primitives::Time {
             time_since_start: 0.0,
+            ..Default::default()
         }),
     });
 
@@ -370,11 +371,15 @@ async fn run() -> anyhow::Result<()> {
             Event::MainEventsCleared => window.request_redraw(),
             Event::RedrawRequested(_) => match swap_chain.get_current_frame() {
                 Ok(frame) => {
-                    time_since_start += 1.0 / 60.0;
+                    let delta_time = 1.0 / 60.0;
+                    time_since_start += delta_time;
                     queue.write_buffer(
                         &time_buffer,
                         0,
-                        bytemuck::bytes_of(&primitives::Time { time_since_start }),
+                        bytemuck::bytes_of(&primitives::Time {
+                            time_since_start,
+                            delta_time,
+                        }),
                     );
 
                     let mut encoder =
@@ -382,18 +387,25 @@ async fn run() -> anyhow::Result<()> {
                             label: Some("render encoder"),
                         });
 
-                    if move_ships {
-                        let mut compute_pass =
-                            encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                                label: Some("ship movement pass"),
-                            });
+                    let mut compute_pass =
+                        encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                            label: Some("compute pass"),
+                        });
 
+                    compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
+                    compute_pass.set_bind_group(0, &bind_group, &[]);
+                    compute_pass.set_bind_group(1, &particles_bind_group, &[]);
+                    compute_pass.dispatch(dispatch_count(num_particles, 64), 1, 1);
+
+                    if move_ships {
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
                         compute_pass.set_bind_group(0, &bind_group, &[]);
                         compute_pass.set_bind_group(1, &ship_bind_group, &[]);
                         compute_pass.set_bind_group(2, &particles_bind_group, &[]);
                         compute_pass.dispatch(dispatch_count(num_ships, 64), 1, 1);
                     }
+
+                    drop(compute_pass);
 
                     let labels = ["near shadow pass", "middle shadow pass", "far shadow pass"];
                     let shadow_textures = cascaded_shadow_maps.textures();
@@ -470,11 +482,6 @@ async fn run() -> anyhow::Result<()> {
                         render_pass.draw_indexed(0..ship.num_indices, 0, 0..num_ships);
                     }
 
-                    render_pass.set_pipeline(&pipelines.particles_pipeline);
-                    render_pass.set_bind_group(0, &bind_group, &[]);
-                    render_pass.set_bind_group(1, &particles_bind_group, &[]);
-                    render_pass.draw(0..num_particles * 6, 0..1);
-
                     render_pass.set_pipeline(&pipelines.scene_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);
                     render_pass.set_bind_group(1, &scene.texture_bind_group, &[]);
@@ -482,6 +489,11 @@ async fn run() -> anyhow::Result<()> {
                     render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
                     render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
                     render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
+
+                    render_pass.set_pipeline(&pipelines.particles_pipeline);
+                    render_pass.set_bind_group(0, &bind_group, &[]);
+                    render_pass.set_bind_group(1, &particles_bind_group, &[]);
+                    render_pass.draw(0..num_particles * 6, 0..1);
 
                     drop(render_pass);
 
