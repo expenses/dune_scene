@@ -32,12 +32,11 @@ void main() {
 
     float time_remaining = 1.0 - particle.time_alive_percentage;
 
-    float red = time_remaining;
-    float end_fade_out = min(time_remaining * 6.0, 1.0);
-    float alpha = (1.0 - particle.time_alive_percentage * 0.5) * end_fade_out;
-    out_colour = vec4(red, 0.0, 0.0, alpha);
+    float alpha = time_remaining * time_remaining;
 
-    float half_size = 0.01 * particle.time_alive_percentage;
+    out_colour = vec4(vec3(0.5, 0.75, 1.0), alpha);
+
+    float half_size = 0.02 * particle.time_alive_percentage;
 
     vec2 coord = COORDS[gl_VertexIndex % 6];
 

@@ -136,7 +136,7 @@ async fn run() -> anyhow::Result<()> {
         }],
     });
 
-    let particles_per_ship = 50 * 2;
+    let particles_per_ship = 15 * 2;
     let num_particles = num_ships * particles_per_ship;
 
     let particles_buffer = device.create_buffer(&wgpu::BufferDescriptor {
