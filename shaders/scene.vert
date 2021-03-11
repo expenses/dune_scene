@@ -18,10 +18,6 @@ layout(set = 0, binding = 0) uniform CameraUniform {
     Camera camera;
 };
 
-layout(set = 2, binding = 1) uniform CascadedShadowMapUniform {
-    CSM csm;
-};
-
 void main() {
     out_normal = normal;
     out_uv = uv;
