@@ -310,7 +310,6 @@ async fn run() -> anyhow::Result<()> {
 
     let mut render_sun_dir = false;
     let mut move_ships = true;
-    let mut move_particles = true;
     let mut render_ships = true;
     let mut render_ship_shadows = true;
 
@@ -415,7 +414,11 @@ async fn run() -> anyhow::Result<()> {
             Event::MainEventsCleared => window.request_redraw(),
             Event::RedrawRequested(_) => match swap_chain.get_current_frame() {
                 Ok(frame) => {
-                    let delta_time = 1.0 / 60.0;
+                    let delta_time = if move_ships {
+                        1.0 / 60.0
+                    } else {
+                        0.0
+                    };
                     time_since_start += delta_time;
                     queue.write_buffer(
                         &time_buffer,
@@ -436,14 +439,12 @@ async fn run() -> anyhow::Result<()> {
                             label: Some("compute pass"),
                         });
 
-                    if move_particles {
-                        compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
-                        compute_pass.set_bind_group(0, &bind_group, &[]);
-                        compute_pass.set_bind_group(1, &particles_bind_group, &[]);
-                        compute_pass.dispatch(dispatch_count(num_particles, 64), 1, 1);
-                    }
+                    compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
+                    compute_pass.set_bind_group(0, &bind_group, &[]);
+                    compute_pass.set_bind_group(1, &particles_bind_group, &[]);
+                    compute_pass.dispatch(dispatch_count(num_particles, 64), 1, 1);
 
-                    if move_ships && move_particles {
+                    if move_ships {
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
                         compute_pass.set_bind_group(0, &bind_group, &[]);
                         compute_pass.set_bind_group(1, &ship_bind_group, &[]);
@@ -617,7 +618,6 @@ async fn run() -> anyhow::Result<()> {
                             &mut tonemapper_params,
                             &mut render_sun_dir,
                             &mut move_ships,
-                            &mut move_particles,
                             &mut render_ships,
                             &mut render_ship_shadows,
                             &mut cascade_split_lambda,
@@ -777,7 +777,6 @@ fn draw_ui(
     tonemapper_params: &mut TonemapperParams,
     render_sun_dir: &mut bool,
     move_ships: &mut bool,
-    move_particles: &mut bool,
     render_ships: &mut bool,
     render_ship_shadows: &mut bool,
     cascade_split_lambda: &mut f32,
@@ -820,7 +819,6 @@ fn draw_ui(
 
     ui.checkbox(imgui::im_str!("Render Sun Direction"), render_sun_dir);
     ui.checkbox(imgui::im_str!("Move Ships"), move_ships);
-    ui.checkbox(imgui::im_str!("Move Particles"), move_particles);
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
     ui.checkbox(imgui::im_str!("Render Ship Shadows"), render_ship_shadows);
 
