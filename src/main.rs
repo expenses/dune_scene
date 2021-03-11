@@ -761,7 +761,6 @@ fn draw_ui(
     }
 
     ui.checkbox(imgui::im_str!("Render Sun Direction"), render_sun_dir);
-
     ui.checkbox(imgui::im_str!("Move Ships"), move_ships);
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
     ui.checkbox(imgui::im_str!("Render Ship Shadows"), render_ship_shadows);

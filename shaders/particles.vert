@@ -30,14 +30,14 @@ const vec2 COORDS[6] = {
 void main() {
     Particle particle = particles[gl_VertexIndex / 6];
 
-    // Using `fract` here is just because if you disable the ship movement
-    // shader, `time_alive_percentage` will become > 1.0 which is just black.
-    // This is more fun.
-    float red = fract(1.0 - particle.time_alive_percentage);
-    float alpha = fract(1.0 - particle.time_alive_percentage * 0.5);
+    float time_remaining = 1.0 - particle.time_alive_percentage;
+
+    float red = time_remaining;
+    float end_fade_out = min(time_remaining * 6.0, 1.0);
+    float alpha = (1.0 - particle.time_alive_percentage * 0.5) * end_fade_out;
     out_colour = vec4(red, 0.0, 0.0, alpha);
 
-    float half_size = 0.01 * min(particle.time_alive_percentage, 1.0);
+    float half_size = 0.01 * particle.time_alive_percentage;
 
     vec2 coord = COORDS[gl_VertexIndex % 6];
 
