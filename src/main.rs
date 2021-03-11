@@ -95,6 +95,16 @@ async fn run() -> anyhow::Result<()> {
         contents: bytemuck::bytes_of(&tonemapper_params.convert()),
     });
 
+    let mut time_since_start = 0.0;
+    let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("time buffer"),
+        usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        contents: bytemuck::bytes_of(&primitives::Time {
+            time_since_start: 0.0,
+            ..Default::default()
+        }),
+    });
+
     let mut rng = rand::thread_rng();
 
     let num_ships = 100;
@@ -128,18 +138,19 @@ async fn run() -> anyhow::Result<()> {
 
     let particles_per_ship = 50 * 2;
     let num_particles = num_ships * particles_per_ship;
-    let particles = vec![primitives::Particle::default(); num_particles as usize];
 
-    let particles_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let particles_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("particles buffer"),
         usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&particles),
+        size: std::mem::size_of::<primitives::Particle>() as u64 * num_particles as u64,
+        mapped_at_creation: false,
     });
 
-    let particles_buffer_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let particles_buffer_info = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("particles info buffer"),
         usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::bytes_of(&primitives::ParticlesBufferInfo::default()),
+        size: std::mem::size_of::<primitives::ParticlesBufferInfo>() as u64,
+        mapped_at_creation: false,
     });
 
     let particles_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -197,16 +208,6 @@ async fn run() -> anyhow::Result<()> {
         label: Some("camera buffer"),
         usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         contents: bytemuck::bytes_of(&camera),
-    });
-
-    let mut time_since_start = 0.0;
-    let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("time buffer"),
-        usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-        contents: bytemuck::bytes_of(&primitives::Time {
-            time_since_start: 0.0,
-            ..Default::default()
-        }),
     });
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
