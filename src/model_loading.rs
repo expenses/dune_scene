@@ -1,21 +1,62 @@
 use crate::RenderResources;
 use primitives::{Sun, Vec3A, Vertex};
 use std::collections::HashMap;
-use ultraviolet::{Mat4, Vec3};
+use ultraviolet::{Mat4, Vec3, Vec2};
 use wgpu::util::DeviceExt;
+
+pub struct Orbit {
+    pub longitude: f32,
+    pub latitude: f32,
+    distance: f32,
+}
+
+impl Orbit {
+    fn from_vector(vector: Vec3) -> Self {
+        let latitude = vector.x.atan2(vector.z);
+        let horizontal_length = (vector.x * vector.x + vector.z * vector.z).sqrt();
+        let longitude = horizontal_length.atan2(vector.y);
+        let distance = vector.mag();
+        Self {
+            latitude,
+            longitude,
+            distance,
+        }
+    }
+
+    pub fn rotate(&mut self, delta: Vec2) {
+        use std::f32::consts::PI;
+        let speed = 0.15;
+        self.latitude -= delta.x.to_radians() * speed;
+        self.longitude = (self.longitude - delta.y.to_radians() * speed)
+            .max(std::f32::EPSILON)
+            .min(PI / 2.0);
+    }
+
+    pub fn zoom(&mut self, delta: f32) {
+        self.distance = (self.distance + delta * 0.5).max(1.0).min(10.0);
+    }
+
+    fn as_vector(&self) -> Vec3 {
+        let y = self.longitude.cos();
+        let horizontal_amount = self.longitude.sin();
+        let x = horizontal_amount * self.latitude.sin();
+        let z = horizontal_amount * self.latitude.cos();
+        Vec3::new(x, y, z) * self.distance
+    }
+}
 
 pub struct Scene {
     pub camera_z_near: f32,
     pub camera_z_far: f32,
-    pub camera_view: Mat4,
     camera_y_fov: f32,
-    camera_eye: Vec3,
+    pub orbit: Orbit,
     pub texture_bind_group: wgpu::BindGroup,
     pub sun_buffer: wgpu::Buffer,
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
     pub num_indices: u32,
     pub sun_facing: Vec3,
+    look_at: Vec3,
 }
 
 impl Scene {
@@ -46,8 +87,12 @@ impl Scene {
         let camera_eye = camera_transform.extract_translation();
         let camera_rotor = camera_transform.extract_rotation();
         let camera_view_direction = camera_rotor * -Vec3::unit_z();
-        let camera_up = camera_rotor * Vec3::unit_y();
-        let camera_view = Mat4::look_at(camera_eye, camera_eye + camera_view_direction, camera_up);
+        let look_at = {
+            // Multiplier to bring y to zero
+            let multiplier = camera_eye.y / camera_view_direction.y;
+            camera_eye - camera_view_direction * multiplier
+        };
+        let orbit = Orbit::from_vector(camera_eye - look_at);
 
         let mut image_map = HashMap::new();
 
@@ -155,19 +200,23 @@ impl Scene {
         Ok(Self {
             camera_y_fov: camera_perspective.yfov(),
             camera_z_near: camera_perspective.znear(),
-            camera_z_far: camera_perspective.zfar().unwrap(),
-            camera_view,
+            camera_z_far: camera_perspective.zfar().unwrap() * 1.5,
             texture_bind_group,
             sun_buffer,
             vertices,
             indices,
             num_indices,
-            camera_eye,
             sun_facing,
+            orbit,
+            look_at,
         })
     }
 
     pub fn create_camera(&self, width: u32, height: u32) -> primitives::Camera {
+        let camera_eye = self.orbit.as_vector() + self.look_at;
+
+        let camera_view = Mat4::look_at(camera_eye, self.look_at, Vec3::unit_y());
+
         let perspective = ultraviolet::projection::perspective_wgpu_dx(
             self.camera_y_fov,
             width as f32 / height as f32,
@@ -175,13 +224,13 @@ impl Scene {
             self.camera_z_far,
         );
 
-        let perspective_view = perspective * self.camera_view;
+        let perspective_view = perspective * camera_view;
 
         primitives::Camera {
             perspective_view,
-            view: self.camera_view,
+            view: camera_view,
             perspective,
-            position: self.camera_eye,
+            position: camera_eye,
         }
     }
 }

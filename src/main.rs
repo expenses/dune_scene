@@ -5,7 +5,7 @@ use cascaded_shadow_maps::CascadedShadowMaps;
 use model_loading::Scene;
 use rand::Rng;
 use resources_and_pipelines::{Pipelines, RenderResources};
-use ultraviolet::Vec3;
+use ultraviolet::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 fn main() -> anyhow::Result<()> {
@@ -169,7 +169,7 @@ async fn run() -> anyhow::Result<()> {
     });
 
     let scene_bytes = include_bytes!("../models/dune.glb");
-    let scene = Scene::load(scene_bytes, &device, &queue, &resources)?;
+    let mut scene = Scene::load(scene_bytes, &device, &queue, &resources)?;
     println!(
         "Camera z near: {}, Camera z far: {}",
         scene.camera_z_near, scene.camera_z_far
@@ -290,7 +290,12 @@ async fn run() -> anyhow::Result<()> {
             &tonemapper_uniform_buffer,
         );
 
-    let mut split_cascades = [0.0, 0.4, 0.6, 1.0];
+    let mut cascade_split_lambda = 0.1;
+    let mut split_cascades = cascaded_shadow_maps::calculate_split_cascades(
+        scene.camera_z_near,
+        scene.camera_z_far,
+        cascade_split_lambda,
+    );
 
     cascaded_shadow_maps.update_params(
         cascaded_shadow_maps::CameraParams {
@@ -309,8 +314,12 @@ async fn run() -> anyhow::Result<()> {
     let mut render_ships = true;
     let mut render_ship_shadows = true;
 
+    use winit::dpi::*;
     use winit::event::*;
     use winit::event_loop::*;
+
+    let mut previous_cursor_position = Vec2::zero();
+    let mut mouse_down = false;
 
     event_loop.run(move |event, _, control_flow| {
         imgui_platform.handle_event(imgui.io_mut(), &window, &event);
@@ -348,20 +357,59 @@ async fn run() -> anyhow::Result<()> {
                     framebuffer_texture = new_framebuffer_texture;
                     tonemapper_bind_group = new_tonemapper_bind_group;
 
-                    camera = scene.create_camera(width, height);
-                    queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(&camera));
-
-                    cascaded_shadow_maps.update_params(
-                        cascaded_shadow_maps::CameraParams {
-                            projection_view: camera.perspective_view,
-                            far_clip: scene.camera_z_far,
-                            near_clip: scene.camera_z_near,
-                        },
-                        split_cascades,
-                        scene.sun_facing,
+                    update_camera_and_shadows(
+                        &mut camera,
+                        &camera_buffer,
+                        &swap_chain_descriptor,
+                        &cascaded_shadow_maps,
                         &queue,
+                        &scene,
+                        split_cascades,
                     );
+                },
+                WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+                    mouse_down = *state == ElementState::Pressed;
                 }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    let delta = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => -*y,
+                        MouseScrollDelta::PixelDelta(PhysicalPosition { y, .. }) => {
+                            *y as f32 / -200.0
+                        }
+                    };
+
+                    scene.orbit.zoom(delta);
+                    update_camera_and_shadows(
+                        &mut camera,
+                        &camera_buffer,
+                        &swap_chain_descriptor,
+                        &cascaded_shadow_maps,
+                        &queue,
+                        &scene,
+                        split_cascades,
+                    );
+                },
+                WindowEvent::CursorMoved { position, .. } => {
+                    let position = position.to_logical::<f32>(window.scale_factor());
+                    let position = Vec2::new(position.x, position.y);
+
+                    if mouse_down {
+                        let delta = position - previous_cursor_position;
+                        scene.orbit.rotate(delta);
+
+                        update_camera_and_shadows(
+                            &mut camera,
+                            &camera_buffer,
+                            &swap_chain_descriptor,
+                            &cascaded_shadow_maps,
+                            &queue,
+                            &scene,
+                            split_cascades,
+                        );
+                    }
+
+                    previous_cursor_position = position;
+                },
                 _ => {}
             },
             Event::MainEventsCleared => window.request_redraw(),
@@ -572,7 +620,7 @@ async fn run() -> anyhow::Result<()> {
                             &mut move_particles,
                             &mut render_ships,
                             &mut render_ship_shadows,
-                            &mut split_cascades,
+                            &mut cascade_split_lambda,
                         );
 
                         if dirty.settings {
@@ -588,6 +636,11 @@ async fn run() -> anyhow::Result<()> {
                         }
 
                         if dirty.csm {
+                            split_cascades = cascaded_shadow_maps::calculate_split_cascades(
+                                scene.camera_z_near,
+                                scene.camera_z_far,
+                                cascade_split_lambda,
+                            );
                             cascaded_shadow_maps.update_params(
                                 cascaded_shadow_maps::CameraParams {
                                     projection_view: camera.perspective_view,
@@ -727,7 +780,7 @@ fn draw_ui(
     move_particles: &mut bool,
     render_ships: &mut bool,
     render_ship_shadows: &mut bool,
-    split_cascades: &mut [f32; 4],
+    cascade_split_lambda: &mut f32,
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
 
@@ -771,15 +824,10 @@ fn draw_ui(
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
     ui.checkbox(imgui::im_str!("Render Ship Shadows"), render_ship_shadows);
 
-    for i in 0..4 {
-        let lower_bound = if i == 0 { 0.0 } else { split_cascades[i - 1] };
-        let upper_bound = if i == 3 { 1.0 } else { split_cascades[i + 1] };
-
-        dirty.csm |= imgui::Drag::new(&imgui::im_str!("Split Cascade {}", i))
-            .range(lower_bound..=upper_bound)
-            .speed(0.01)
-            .build(&ui, &mut split_cascades[i]);
-    }
+    dirty.csm |= imgui::Drag::new(&imgui::im_str!("Cascade Split Lambda"))
+        .range(0.0..=1.0)
+        .speed(0.01)
+        .build(&ui, cascade_split_lambda);
 
     dirty.settings |= imgui::Drag::new(imgui::im_str!("Ship Movement Bounds"))
         .range(0.0..=2.5)
@@ -837,4 +885,28 @@ const fn dispatch_count(num: u32, group_size: u32) -> u32 {
     }
 
     count
+}
+
+fn update_camera_and_shadows(
+    camera: &mut primitives::Camera,
+    camera_buffer: &wgpu::Buffer,
+    swap_chain_descriptor: &wgpu::SwapChainDescriptor,
+    cascaded_shadow_maps: &CascadedShadowMaps,
+    queue: &wgpu::Queue,
+    scene: &Scene,
+    split_cascades: [f32; 4],
+) {
+    *camera = scene.create_camera(swap_chain_descriptor.width, swap_chain_descriptor.height);
+    queue.write_buffer(&camera_buffer, 0, bytemuck::bytes_of(camera));
+
+    cascaded_shadow_maps.update_params(
+        cascaded_shadow_maps::CameraParams {
+            projection_view: camera.perspective_view,
+            far_clip: scene.camera_z_far,
+            near_clip: scene.camera_z_near,
+        },
+        split_cascades,
+        scene.sun_facing,
+        &queue,
+    );
 }
