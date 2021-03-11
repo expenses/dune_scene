@@ -1,7 +1,7 @@
 use crate::RenderResources;
 use primitives::{Sun, Vec3A, Vertex};
 use std::collections::HashMap;
-use ultraviolet::{Mat4, Vec3, Vec2};
+use ultraviolet::{Mat4, Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 pub struct Orbit {

@@ -115,7 +115,7 @@ async fn run() -> anyhow::Result<()> {
                 rng.gen_range(0.49..=0.51),
                 rng.gen_range(-2.0..=2.0),
             ),
-            y_rotation: rng.gen_range(0.0..360.0_f32).to_radians(),
+            y_rotation: rng.gen_range(0.0..360.0_f32.to_radians()),
             rotation_speed: rng.gen_range(-0.02..=0.02),
             ..Default::default()
         })
@@ -166,6 +166,20 @@ async fn run() -> anyhow::Result<()> {
                 resource: particles_buffer_info.as_entire_binding(),
             },
         ],
+    });
+
+    let num_land_craft = 400;
+    let land_craft: Vec<_> = (0..num_land_craft)
+        .map(|_| primitives::LandCraft {
+            position: Vec3::new(rng.gen_range(0.0..=2.0), 0.0, rng.gen_range(0.0..=2.0)),
+            facing: rng.gen_range(0.0..360.0_f32.to_radians()),
+        })
+        .collect();
+
+    let land_craft_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("land craft buffer"),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(&land_craft),
     });
 
     let scene_bytes = include_bytes!("../models/dune.glb");
@@ -308,6 +322,60 @@ async fn run() -> anyhow::Result<()> {
         &queue,
     );
 
+    let height_map_texture = {
+        let height_map_texture = create_texture(
+            &device,
+            "height map texture",
+            1024,
+            1024,
+            wgpu::TextureFormat::R32Float,
+            wgpu::TextureUsage::RENDER_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
+        );
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("height map encoder"),
+        });
+
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("height map render pass"),
+            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                attachment: &height_map_texture,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: true,
+                },
+            }],
+            depth_stencil_attachment: None,
+        });
+
+        render_pass.set_pipeline(&pipelines.bake_height_map_pipeline);
+        render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
+        render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
+        render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
+
+        drop(render_pass);
+
+        queue.submit(Some(encoder.finish()));
+
+        height_map_texture
+    };
+
+    let land_craft_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("land craft bind group"),
+        layout: &resources.land_craft_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: land_craft_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&height_map_texture),
+            },
+        ],
+    });
+
     let mut render_sun_dir = false;
     let mut move_ships = true;
     let mut render_ships = true;
@@ -365,8 +433,12 @@ async fn run() -> anyhow::Result<()> {
                         &scene,
                         split_cascades,
                     );
-                },
-                WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+                }
+                WindowEvent::MouseInput {
+                    state,
+                    button: MouseButton::Left,
+                    ..
+                } => {
                     mouse_down = *state == ElementState::Pressed;
                 }
                 WindowEvent::MouseWheel { delta, .. } => {
@@ -387,7 +459,7 @@ async fn run() -> anyhow::Result<()> {
                         &scene,
                         split_cascades,
                     );
-                },
+                }
                 WindowEvent::CursorMoved { position, .. } => {
                     let position = position.to_logical::<f32>(window.scale_factor());
                     let position = Vec2::new(position.x, position.y);
@@ -408,17 +480,13 @@ async fn run() -> anyhow::Result<()> {
                     }
 
                     previous_cursor_position = position;
-                },
+                }
                 _ => {}
             },
             Event::MainEventsCleared => window.request_redraw(),
             Event::RedrawRequested(_) => match swap_chain.get_current_frame() {
                 Ok(frame) => {
-                    let delta_time = if move_ships {
-                        1.0 / 60.0
-                    } else {
-                        0.0
-                    };
+                    let delta_time = if move_ships { 1.0 / 60.0 } else { 0.0 };
                     time_since_start += delta_time;
                     queue.write_buffer(
                         &time_buffer,
@@ -443,6 +511,11 @@ async fn run() -> anyhow::Result<()> {
                     compute_pass.set_bind_group(0, &bind_group, &[]);
                     compute_pass.set_bind_group(1, &particles_bind_group, &[]);
                     compute_pass.dispatch(dispatch_count(num_particles, 64), 1, 1);
+
+                    compute_pass.set_pipeline(&pipelines.land_craft_movement_pipeline);
+                    compute_pass.set_bind_group(0, &bind_group, &[]);
+                    compute_pass.set_bind_group(1, &land_craft_bind_group, &[]);
+                    compute_pass.dispatch(dispatch_count(num_land_craft, 64), 1, 1);
 
                     if move_ships {
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);

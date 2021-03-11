@@ -148,3 +148,10 @@ pub struct Time {
     pub time_since_start: f32,
     pub delta_time: f32,
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LandCraft {
+    pub position: Vec3,
+    pub facing: f32,
+}

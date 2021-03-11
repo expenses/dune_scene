@@ -10,6 +10,7 @@ pub struct RenderResources {
     pub tonemap_bgl: wgpu::BindGroupLayout,
     pub ship_bgl: wgpu::BindGroupLayout,
     pub particles_bgl: wgpu::BindGroupLayout,
+    pub land_craft_bgl: wgpu::BindGroupLayout,
     pub sampler: wgpu::Sampler,
 }
 
@@ -64,7 +65,7 @@ impl RenderResources {
                 entries: &[
                     uniform(0, wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::COMPUTE),
                     uniform(1, wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT),
-                    sampler(2, wgpu::ShaderStage::FRAGMENT),
+                    sampler(2, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::COMPUTE),
                     uniform(3, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::COMPUTE),
                     uniform(4, wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::COMPUTE),
                 ],
@@ -107,6 +108,17 @@ impl RenderResources {
                     storage(1, wgpu::ShaderStage::COMPUTE, false),
                 ],
             }),
+            land_craft_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("land craft bind group layout"),
+                entries: &[
+                    storage(
+                        0,
+                        wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
+                        false,
+                    ),
+                    texture(1, wgpu::ShaderStage::COMPUTE),
+                ],
+            }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("linear sampler"),
                 mag_filter: wgpu::FilterMode::Linear,
@@ -124,11 +136,14 @@ pub struct Pipelines {
     pub sun_dir_pipeline: wgpu::RenderPipeline,
     pub tonemap_pipeline: wgpu::RenderPipeline,
     pub ship_pipeline: wgpu::RenderPipeline,
+    pub land_craft_pipeline: wgpu::RenderPipeline,
     pub particles_pipeline: wgpu::RenderPipeline,
     pub scene_shadows_pipeline: wgpu::RenderPipeline,
     pub ship_shadows_pipeline: wgpu::RenderPipeline,
     pub ship_movement_pipeline: wgpu::ComputePipeline,
     pub particles_movement_pipeline: wgpu::ComputePipeline,
+    pub land_craft_movement_pipeline: wgpu::ComputePipeline,
+    pub bake_height_map_pipeline: wgpu::RenderPipeline,
 }
 
 impl Pipelines {
@@ -138,6 +153,13 @@ impl Pipelines {
         resources: &RenderResources,
         shadow_maps: &CascadedShadowMaps,
     ) -> Self {
+        let no_bind_groups_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("no bind groups pipeline layout"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[],
+            });
+
         let main_bind_group_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("main bind group pipeline layout"),
@@ -151,6 +173,22 @@ impl Pipelines {
                 bind_group_layouts: &[&resources.main_bgl, &resources.particles_bgl],
                 push_constant_ranges: &[],
             });
+
+        let land_craft_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("land craft pipeline layout"),
+                bind_group_layouts: &[&resources.main_bgl, &resources.land_craft_bgl],
+                push_constant_ranges: &[],
+            });
+
+        let fs_flat_colour = wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
+        let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
+
+        let vertex_buffer_layout = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as u64,
+            step_mode: wgpu::InputStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
+        };
 
         Self {
             scene_pipeline: {
@@ -176,11 +214,7 @@ impl Pipelines {
                     vertex: wgpu::VertexState {
                         module: &vs_scene,
                         entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<Vertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-                        }],
+                        buffers: &[vertex_buffer_layout.clone()],
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &fs_scene,
@@ -226,11 +260,7 @@ impl Pipelines {
                     vertex: wgpu::VertexState {
                         module: &vs_ship,
                         entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<Vertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-                        }],
+                        buffers: &[vertex_buffer_layout.clone()],
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &fs_ship,
@@ -252,13 +282,41 @@ impl Pipelines {
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
+            land_craft_pipeline: {
+                let vs_land_craft = wgpu::include_spirv!("../shaders/compiled/land_craft.vert.spv");
+                let vs_land_craft = device.create_shader_module(&vs_land_craft);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("land craft pipeline"),
+                    layout: Some(&land_craft_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_land_craft,
+                        entry_point: "main",
+                        buffers: &[vertex_buffer_layout.clone()],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_flat_colour,
+                        entry_point: "main",
+                        targets: &[FRAMEBUFFER_FORMAT.into()],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        cull_mode: wgpu::CullMode::Back,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                        clamp_depth: false,
+                    }),
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
             sun_dir_pipeline: {
                 let vs_sun_dir = wgpu::include_spirv!("../shaders/compiled/sun_dir.vert.spv");
                 let vs_sun_dir = device.create_shader_module(&vs_sun_dir);
-
-                let fs_flat_colour =
-                    wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
-                let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("sun dir pipeline"),
@@ -380,11 +438,7 @@ impl Pipelines {
                     vertex: wgpu::VertexState {
                         module: &vs_scene_shadows,
                         entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<Vertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-                        }],
+                        buffers: &[vertex_buffer_layout.clone()],
                     },
                     fragment: None,
                     primitive: wgpu::PrimitiveState {
@@ -423,11 +477,7 @@ impl Pipelines {
                     vertex: wgpu::VertexState {
                         module: &vs_ship_shadows,
                         entry_point: "main",
-                        buffers: &[wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<Vertex>() as u64,
-                            step_mode: wgpu::InputStepMode::Vertex,
-                            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
-                        }],
+                        buffers: &[vertex_buffer_layout.clone()],
                     },
                     fragment: None,
                     primitive: wgpu::PrimitiveState {
@@ -478,6 +528,45 @@ impl Pipelines {
                     layout: Some(&particles_pipeline_layout),
                     module: &cs_particles_movement,
                     entry_point: "main",
+                })
+            },
+            land_craft_movement_pipeline: {
+                let cs_land_craft_movement =
+                    wgpu::include_spirv!("../shaders/compiled/land_craft_movement.comp.spv");
+                let cs_land_craft_movement = device.create_shader_module(&cs_land_craft_movement);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("land craft movement pipeline"),
+                    layout: Some(&land_craft_pipeline_layout),
+                    module: &cs_land_craft_movement,
+                    entry_point: "main",
+                })
+            },
+            bake_height_map_pipeline: {
+                let vs_bake_height_map =
+                    wgpu::include_spirv!("../shaders/compiled/bake_height_map.vert.spv");
+                let vs_bake_height_map = device.create_shader_module(&vs_bake_height_map);
+
+                let fs_bake_height_map =
+                    wgpu::include_spirv!("../shaders/compiled/bake_height_map.frag.spv");
+                let fs_bake_height_map = device.create_shader_module(&fs_bake_height_map);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("bake height map pipeline"),
+                    layout: Some(&no_bind_groups_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_bake_height_map,
+                        entry_point: "main",
+                        buffers: &[vertex_buffer_layout.clone()],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_bake_height_map,
+                        entry_point: "main",
+                        targets: &[wgpu::TextureFormat::R32Float.into()],
+                    }),
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
                 })
             },
         }

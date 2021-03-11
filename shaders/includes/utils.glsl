@@ -30,3 +30,9 @@ vec3 compute_f90(vec3 f0) {
 float clamped_dot(vec3 a, vec3 b) {
     return max(dot(a, b), 0.0);
 }
+
+vec2 repeat_over_bounds(vec2 position, float bounds) {
+    bvec2 is_over_bounds = greaterThan(abs(position), vec2(bounds));
+    vec2 offset = vec2(is_over_bounds) * sign(position) * (bounds * 2.0);
+    return position - offset;
+}
