@@ -52,14 +52,10 @@ float calculate_shadow(float view_pos_z, mat4 matrices[3], vec2 splits, vec3 fra
 	uint cascade_index = cascade_index(view_pos_z, splits);
 	vec4 transformed_coords = matrices[cascade_index] * vec4(frag_pos, 1.0);
 
-    // compensate for the Y-flip difference between the NDC and texture coordinates
-    vec2 flip_correction = vec2(0.5, -0.5);
-    // compute texture coordinates for shadow lookup
-    float proj_correction = 1.0 / transformed_coords.w;
-    vec2 light_local = transformed_coords.xy * flip_correction * proj_correction + vec2(0.5, 0.5);
-    // do the lookup, using HW PCF and comparison
+    vec3 proj_corrected = transformed_coords.xyz / transformed_coords.w;
+    vec2 light_local = proj_corrected.xy;
     float bias = 0.005;
-    float comparison = transformed_coords.z * proj_correction - bias;
+    float comparison = proj_corrected.z - bias;
 
     return percentage_closer_filtering(light_local, cascade_index, comparison);
 }

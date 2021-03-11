@@ -201,7 +201,7 @@ impl CascadedShadowMaps {
         origin_to_light: Vec3,
         queue: &wgpu::Queue,
     ) {
-        let uniform = update_cascades(camera, cascade_splits, origin_to_light);
+        let (uniform, matrices) = update_cascades(camera, cascade_splits, origin_to_light);
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
 
@@ -209,7 +209,7 @@ impl CascadedShadowMaps {
             queue.write_buffer(
                 &self.light_projection_buffers[i],
                 0,
-                bytemuck::bytes_of(&uniform.matrices[i]),
+                bytemuck::bytes_of(&matrices[i]),
             );
         }
     }
@@ -260,7 +260,7 @@ fn update_cascades(
     camera: CameraParams,
     cascade_splits: [f32; 4],
     origin_to_light: Vec3,
-) -> Uniform {
+) -> (Uniform, [Mat4; 3]) {
     let clip_range = camera.far_clip - camera.near_clip;
 
     let inverse_camera_projection_view = camera.projection_view.inversed();
@@ -337,11 +337,24 @@ fn update_cascades(
     let (matrix_2, split_depth_2) = calculate_matrix(cascade_splits[1], cascade_splits[2]);
     let (matrix_3, _) = calculate_matrix(cascade_splits[2], cascade_splits[3]);
 
-    Uniform {
-        matrices: [matrix_1, matrix_2, matrix_3],
-        // Despite there being 3 matrices, we only care about the first two
-        // split depths as we can just sample the 3rd shadow texture even if an
-        // object lies beyond it.
-        split_depths: [split_depth_1, split_depth_2],
-    }
+    let matrices = [matrix_1, matrix_2, matrix_3];
+    // compensate for the Y-flip difference between the matrix and texture coordinates.
+    let flip_correction = Mat4::from_nonuniform_scale(Vec3::new(0.5, -0.5, 1.0));
+    // Add a vec2(0.5, 0.5) to put it into uv space.
+    let uv_translation = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+
+    (
+        Uniform {
+            matrices: [
+                uv_translation * flip_correction * matrix_1,
+                uv_translation * flip_correction * matrix_2,
+                uv_translation * flip_correction * matrix_3,
+            ],
+            // Despite there being 3 matrices, we only care about the first two
+            // split depths as we can just sample the 3rd shadow texture even if an
+            // object lies beyond it.
+            split_depths: [split_depth_1, split_depth_2],
+        },
+        matrices,
+    )
 }
