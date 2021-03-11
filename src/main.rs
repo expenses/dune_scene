@@ -171,7 +171,7 @@ async fn run() -> anyhow::Result<()> {
     let num_land_craft = 400;
     let land_craft: Vec<_> = (0..num_land_craft)
         .map(|_| primitives::LandCraft {
-            position: Vec3::new(rng.gen_range(0.0..=2.0), 0.0, rng.gen_range(0.0..=2.0)),
+            position: Vec3::new(rng.gen_range(-2.0..=2.0), 0.0, rng.gen_range(-2.0..=2.0)),
             facing: rng.gen_range(0.0..360.0_f32.to_radians()),
         })
         .collect();
@@ -191,6 +191,9 @@ async fn run() -> anyhow::Result<()> {
 
     let ship_bytes = include_bytes!("../models/ship.glb");
     let ship = model_loading::Ship::load(ship_bytes, &device, &queue, &resources)?;
+
+    let land_craft_bytes = include_bytes!("../models/landcraft.glb");
+    let land_craft = model_loading::LandCraft::load(land_craft_bytes, &device)?;
 
     // Now we can create a window.
 
@@ -601,6 +604,13 @@ async fn run() -> anyhow::Result<()> {
                         render_pass.set_index_buffer(ship.indices.slice(..), INDEX_FORMAT);
                         render_pass.draw_indexed(0..ship.num_indices, 0, 0..num_ships);
                     }
+
+                    render_pass.set_pipeline(&pipelines.land_craft_pipeline);
+                    render_pass.set_bind_group(0, &bind_group, &[]);
+                    render_pass.set_bind_group(1, &land_craft_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, land_craft.vertices.slice(..));
+                    render_pass.set_index_buffer(land_craft.indices.slice(..), INDEX_FORMAT);
+                    render_pass.draw_indexed(0..land_craft.num_indices, 0, 0..num_land_craft);
 
                     render_pass.set_pipeline(&pipelines.scene_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);

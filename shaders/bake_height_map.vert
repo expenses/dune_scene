@@ -10,5 +10,7 @@ layout(location = 0) out float out_height;
 void main() {
     out_height = in_position.y;
 
-    gl_Position = vec4(in_position.xz / 2.0, 0.0, 1.0);
+    vec2 position = in_position.xz * vec2(0.5, -0.5);
+
+    gl_Position = vec4(position, 0.0, 1.0);
 }

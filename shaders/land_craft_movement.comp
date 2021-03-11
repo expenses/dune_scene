@@ -28,7 +28,7 @@ void main() {
 
     LandCraft craft = crafts[index];
 
-    vec2 velocity = vec2(sin(craft.facing), cos(craft.facing)) * time.delta_time;
+    vec2 velocity = vec2(sin(craft.facing), cos(craft.facing)) * (0.25 * time.delta_time);
     craft.position.xz += velocity;
     craft.position.xz = repeat_over_bounds(craft.position.xz, 2.0);
 
