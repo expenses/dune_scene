@@ -64,4 +64,5 @@ struct Time {
 struct LandCraft {
     vec3 position;
     float facing;
+    mat3 rotation_matrix;
 };

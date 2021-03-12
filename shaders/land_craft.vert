@@ -20,9 +20,9 @@ layout(set = 1, binding = 0) readonly buffer LandCraftBuffer {
 void main() {
     LandCraft craft = craft[gl_InstanceIndex];
 
-    vec3 transformed_pos = position + craft.position;
+    vec3 transformed_pos = craft.position + craft.rotation_matrix * position;
 
-    out_colour = vec4(1.0, 0.0, 1.0, 1.0);
+    out_colour = vec4(normal * 0.5 + 0.5, 1.0);
 
     gl_Position = camera.perspective_view * vec4(transformed_pos, 1.0);
 }

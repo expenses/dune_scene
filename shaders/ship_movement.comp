@@ -2,6 +2,7 @@
 
 #include "includes/structs.glsl"
 #include "includes/utils.glsl"
+#include "includes/matrices.glsl"
 
 layout(set = 0, binding = 3) uniform SettingsUniform {
     Settings settings;
@@ -35,14 +36,6 @@ const vec3 LEFT_ENGINE_OFFSET = vec3(
 );
 
 const uint PARTICLES_PER_SHIP = 2;
-
-mat3 rotation_matrix_y(float theta) {
-    return mat3(
-        cos(theta), 0, sin(theta),
-        0, 1, 0,
-        -sin(theta), 0, cos(theta)
-    );
-}
 
 vec3 randomish_unit_vector(vec3 seed) {
     return normalize(vec3(

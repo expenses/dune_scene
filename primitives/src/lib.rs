@@ -150,8 +150,9 @@ pub struct Time {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Default, Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct LandCraft {
     pub position: Vec3,
     pub facing: f32,
+    pub _rotation_matrix: [Vec4; 3],
 }

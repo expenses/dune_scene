@@ -168,11 +168,12 @@ async fn run() -> anyhow::Result<()> {
         ],
     });
 
-    let num_land_craft = 400;
+    let num_land_craft = 200;
     let land_craft: Vec<_> = (0..num_land_craft)
         .map(|_| primitives::LandCraft {
             position: Vec3::new(rng.gen_range(-2.0..=2.0), 0.0, rng.gen_range(-2.0..=2.0)),
             facing: rng.gen_range(0.0..360.0_f32.to_radians()),
+            ..Default::default()
         })
         .collect();
 
@@ -381,6 +382,7 @@ async fn run() -> anyhow::Result<()> {
 
     let mut render_sun_dir = false;
     let mut move_ships = true;
+    let mut move_land_craft = true;
     let mut render_ships = true;
     let mut render_ship_shadows = true;
 
@@ -515,10 +517,12 @@ async fn run() -> anyhow::Result<()> {
                     compute_pass.set_bind_group(1, &particles_bind_group, &[]);
                     compute_pass.dispatch(dispatch_count(num_particles, 64), 1, 1);
 
-                    compute_pass.set_pipeline(&pipelines.land_craft_movement_pipeline);
-                    compute_pass.set_bind_group(0, &bind_group, &[]);
-                    compute_pass.set_bind_group(1, &land_craft_bind_group, &[]);
-                    compute_pass.dispatch(dispatch_count(num_land_craft, 64), 1, 1);
+                    if move_land_craft {
+                        compute_pass.set_pipeline(&pipelines.land_craft_movement_pipeline);
+                        compute_pass.set_bind_group(0, &bind_group, &[]);
+                        compute_pass.set_bind_group(1, &land_craft_bind_group, &[]);
+                        compute_pass.dispatch(dispatch_count(num_land_craft, 64), 1, 1);
+                    }
 
                     if move_ships {
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
@@ -701,6 +705,7 @@ async fn run() -> anyhow::Result<()> {
                             &mut tonemapper_params,
                             &mut render_sun_dir,
                             &mut move_ships,
+                            &mut move_land_craft,
                             &mut render_ships,
                             &mut render_ship_shadows,
                             &mut cascade_split_lambda,
@@ -860,6 +865,7 @@ fn draw_ui(
     tonemapper_params: &mut TonemapperParams,
     render_sun_dir: &mut bool,
     move_ships: &mut bool,
+    move_land_craft: &mut bool,
     render_ships: &mut bool,
     render_ship_shadows: &mut bool,
     cascade_split_lambda: &mut f32,
@@ -902,6 +908,7 @@ fn draw_ui(
 
     ui.checkbox(imgui::im_str!("Render Sun Direction"), render_sun_dir);
     ui.checkbox(imgui::im_str!("Move Ships"), move_ships);
+    ui.checkbox(imgui::im_str!("Move Land Craft"), move_land_craft);
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
     ui.checkbox(imgui::im_str!("Render Ship Shadows"), render_ship_shadows);
 

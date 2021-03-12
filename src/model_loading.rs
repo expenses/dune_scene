@@ -425,17 +425,12 @@ impl LandCraft {
 
         let buffer_blob = gltf.blob.as_ref().unwrap();
 
-        let node_tree = NodeTree::new(&gltf);
-
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
-        for (node, mesh) in gltf
-            .nodes()
-            .filter_map(|node| node.mesh().map(|mesh| (node, mesh)))
-        {
-            let transform = node_tree.transform_of(node.index());
+        const SIZE: f32 = 0.02;
 
+        for mesh in gltf.meshes() {
             for primitive in mesh.primitives() {
                 let reader = primitive.reader(|buffer| {
                     assert_eq!(buffer.index(), 0);
@@ -464,7 +459,7 @@ impl LandCraft {
                         let position: Vec3 = position.into();
 
                         vertices.push(Vertex {
-                            position: transform.transform_vec3(position),
+                            position: position * SIZE,
                             uv: uv.into(),
                             normal: normal.into(),
                             tangent: tangent.into(),
