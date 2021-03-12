@@ -417,10 +417,16 @@ pub struct LandCraft {
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
     pub num_indices: u32,
+    pub texture_bind_group: wgpu::BindGroup,
 }
 
 impl LandCraft {
-    pub fn load(bytes: &[u8], device: &wgpu::Device) -> anyhow::Result<Self> {
+    pub fn load(
+        bytes: &[u8],
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        resources: &RenderResources,
+    ) -> anyhow::Result<Self> {
         let gltf = gltf::Gltf::from_slice(bytes)?;
 
         let buffer_blob = gltf.blob.as_ref().unwrap();
@@ -483,10 +489,23 @@ impl LandCraft {
             contents: bytemuck::cast_slice(&indices),
         });
 
+        let image = gltf.images().next().unwrap();
+        let image = load_image(&image, buffer_blob, device, queue)?;
+
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ship texture bind group"),
+            layout: &resources.single_texture_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&image),
+            }],
+        });
+
         Ok(Self {
             vertices,
             indices,
             num_indices,
+            texture_bind_group,
         })
     }
 }

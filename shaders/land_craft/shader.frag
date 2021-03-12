@@ -20,11 +20,17 @@ layout(set = 0, binding = 3) uniform SettingsUniform {
     Settings settings;
 };
 
-layout(set = 2, binding = 0) uniform texture2DArray shadow_texture_array;
+layout(set = 0, binding = 4) uniform TimeBuffer {
+    Time time;
+};
 
-layout(set = 2, binding = 1) uniform sampler shadow_sampler;
+layout(set = 2, binding = 0) uniform texture2D u_texture;
 
-layout(set = 2, binding = 2) uniform CascadedShadowMapUniform {
+layout(set = 3, binding = 0) uniform texture2DArray shadow_texture_array;
+
+layout(set = 3, binding = 1) uniform sampler shadow_sampler;
+
+layout(set = 3, binding = 2) uniform CascadedShadowMapUniform {
     CSM csm;
 };
 
@@ -34,13 +40,19 @@ layout(set = 2, binding = 2) uniform CascadedShadowMapUniform {
 
 layout(location = 0) out vec4 out_colour;
 
+// All UVs below this are part of the treads and should be rotated.
+const float UV_ROTATION_THRESHOLD = 1.0 - 0.186;
+
 void main() {
     vec3 normal = normalize(in_normal);
 
     vec3 camera_dir = normalize(in_camera_dir);
     vec3 halfway_dir = normalize(sun.facing + camera_dir);
 
-    vec3 texture_colour = in_normal * 0.5 + 0.5;
+    vec2 uv = in_uv;
+    uv.x = fract(uv.x - float(uv.y > UV_ROTATION_THRESHOLD) * time.time_since_start);
+
+    vec3 texture_colour = texture(sampler2D(u_texture, u_sampler), uv).rgb;
 
     vec3 f0 = vec3(0.04);
     vec3 f90 = compute_f90(f0);

@@ -277,6 +277,7 @@ impl Pipelines {
                         bind_group_layouts: &[
                             &resources.main_bgl,
                             &resources.land_craft_bgl,
+                            &resources.single_texture_bgl,
                             shadow_maps.rendering_bind_group_layout(),
                         ],
                         push_constant_ranges: &[],
