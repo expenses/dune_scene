@@ -16,8 +16,6 @@ layout(set = 1, binding = 0) buffer LandCraftBuffer {
 
 layout(set = 1, binding = 1) uniform texture2D height_map;
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-
 const float SCENE_SIZE = 4.0;
 
 float sample_height(vec2 pos) {
@@ -27,12 +25,13 @@ float sample_height(vec2 pos) {
 
 // We do things this way to avoid atan/atan2 which are slow and maybe branchy.
 vec2 calculate_sine_and_cosine(float opposite, float adjacent) {
-    // Adjacent is a constant so the inner part should because a MAD which is
-    // maybe faster than a dot.
-    float rcp_hypotenuse = inversesqrt(opposite * opposite + adjacent * adjacent);
+    vec2 lengths = vec2(opposite, adjacent);
+    float rcp_hypotenuse = inversesqrt(dot(lengths, lengths));
     // sohcahtoa!
-    return vec2(opposite, adjacent) * rcp_hypotenuse;
+    return lengths * rcp_hypotenuse;
 }
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
     uint index = gl_GlobalInvocationID.x;
@@ -70,4 +69,3 @@ void main() {
 
     crafts[index] = craft;
 }
-
