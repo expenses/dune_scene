@@ -14,11 +14,11 @@ layout(set = 0, binding = 0) uniform CameraUniform {
 };
 
 layout(set = 1, binding = 0) readonly buffer LandCraftBuffer {
-    LandCraft craft[];
+    LandCraft crafts[];
 };
 
 void main() {
-    LandCraft craft = craft[gl_InstanceIndex];
+    LandCraft craft = crafts[gl_InstanceIndex];
 
     vec3 transformed_pos = craft.position + craft.rotation_matrix * position;
 

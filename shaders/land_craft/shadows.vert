@@ -11,16 +11,14 @@ layout(set = 0, binding = 0) uniform SunProjectionView {
     mat4 projection_view;
 };
 
-layout(set = 1, binding = 0) readonly buffer ShipTransforms {
-    Ship ship_transforms[];
+layout(set = 1, binding = 0) readonly buffer LandCraftBuffer {
+    LandCraft crafts[];
 };
 
 void main() {
-    Ship ship_transform = ship_transforms[gl_InstanceIndex];
+    LandCraft craft = crafts[gl_InstanceIndex];
 
-    mat3 rotation = ship_transform.y_rotation_matrix;
-
-    vec3 transformed_pos = ship_transform.position + rotation * position;
+    vec3 transformed_pos = craft.position + craft.rotation_matrix * position;
 
     gl_Position = projection_view * vec4(transformed_pos, 1.0);
 }

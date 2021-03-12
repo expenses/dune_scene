@@ -24,11 +24,11 @@ layout(set = 1, binding = 0) readonly buffer ShipTransforms {
 void main() {
     Ship ship_transform = ship_transforms[gl_InstanceIndex];
 
-    mat3 rotation_matrix = ship_transform.y_rotation_matrix;
+    mat3 rotation = ship_transform.y_rotation_matrix;
 
-    vec3 transformed_pos = rotation_matrix * position + ship_transform.position;
+    vec3 transformed_pos = ship_transform.position + rotation * position;
 
-    out_normal = rotation_matrix * normal;
+    out_normal = rotation * normal;
     out_uv = uv;
     out_camera_dir = camera.position - transformed_pos;
     out_pos = transformed_pos;

@@ -565,6 +565,13 @@ async fn run() -> anyhow::Result<()> {
                             render_pass.draw_indexed(0..ship.num_indices, 0, 0..num_ships);
                         }
 
+                        render_pass.set_pipeline(&pipelines.land_craft_shadows_pipeline);
+                        render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
+                        render_pass.set_bind_group(1, &land_craft_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, land_craft.vertices.slice(..));
+                        render_pass.set_index_buffer(land_craft.indices.slice(..), INDEX_FORMAT);
+                        render_pass.draw_indexed(0..land_craft.num_indices, 0, 0..num_land_craft);
+
                         render_pass.set_pipeline(&pipelines.scene_shadows_pipeline);
                         render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
                         render_pass.set_vertex_buffer(0, scene.vertices.slice(..));

@@ -140,6 +140,7 @@ pub struct Pipelines {
     pub particles_pipeline: wgpu::RenderPipeline,
     pub scene_shadows_pipeline: wgpu::RenderPipeline,
     pub ship_shadows_pipeline: wgpu::RenderPipeline,
+    pub land_craft_shadows_pipeline: wgpu::RenderPipeline,
     pub ship_movement_pipeline: wgpu::ComputePipeline,
     pub particles_movement_pipeline: wgpu::ComputePipeline,
     pub land_craft_movement_pipeline: wgpu::ComputePipeline,
@@ -283,7 +284,8 @@ impl Pipelines {
                 })
             },
             land_craft_pipeline: {
-                let vs_land_craft = wgpu::include_spirv!("../shaders/compiled/land_craft_shader.vert.spv");
+                let vs_land_craft =
+                    wgpu::include_spirv!("../shaders/compiled/land_craft_shader.vert.spv");
                 let vs_land_craft = device.create_shader_module(&vs_land_craft);
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -347,7 +349,8 @@ impl Pipelines {
                 })
             },
             particles_pipeline: {
-                let vs_particles = wgpu::include_spirv!("../shaders/compiled/particles_shader.vert.spv");
+                let vs_particles =
+                    wgpu::include_spirv!("../shaders/compiled/particles_shader.vert.spv");
                 let vs_particles = device.create_shader_module(&vs_particles);
 
                 let fs_alpha_circle =
@@ -476,6 +479,45 @@ impl Pipelines {
                     layout: Some(&ship_shadows_pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &vs_ship_shadows,
+                        entry_point: "main",
+                        buffers: &[vertex_buffer_layout.clone()],
+                    },
+                    fragment: None,
+                    primitive: wgpu::PrimitiveState {
+                        cull_mode: wgpu::CullMode::Back,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                        clamp_depth: false,
+                    }),
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
+            land_craft_shadows_pipeline: {
+                let land_craft_shadows_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("land craft shadows pipeline layout"),
+                        bind_group_layouts: &[
+                            shadow_maps.light_projection_bind_group_layout(),
+                            &resources.land_craft_bgl,
+                        ],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_land_craft_shadows =
+                    wgpu::include_spirv!("../shaders/compiled/land_craft_shadows.vert.spv");
+                let vs_land_craft_shadows = device.create_shader_module(&vs_land_craft_shadows);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("land craft shadows pipeline"),
+                    layout: Some(&land_craft_shadows_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_land_craft_shadows,
                         entry_point: "main",
                         buffers: &[vertex_buffer_layout.clone()],
                     },
