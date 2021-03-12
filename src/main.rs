@@ -146,11 +146,15 @@ async fn run() -> anyhow::Result<()> {
         mapped_at_creation: false,
     });
 
-    let particles_buffer_info = device.create_buffer(&wgpu::BufferDescriptor {
+    let particles_buffer_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("particles info buffer"),
         usage: wgpu::BufferUsage::STORAGE,
-        size: std::mem::size_of::<primitives::ParticlesBufferInfo>() as u64,
-        mapped_at_creation: false,
+        contents: bytemuck::bytes_of(&primitives::ParticlesBufferInfo {
+            colour: Vec3::new(0.5, 0.75, 1.0),
+            half_size_constant: 0.001,
+            half_size_linear: 0.02,
+            ..Default::default()
+        }),
     });
 
     let particles_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

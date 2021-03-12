@@ -45,8 +45,11 @@ const uint TONEMAPPER_MODE_OFF = 2;
 const uint TONEMAPPER_MODE_WASM_GAMMA_CORRECT = 3;
 
 struct ParticlesBufferInfo {
+    vec3 colour;
     uint offset;
     float particle_duration;
+    float half_size_constant;
+    float half_size_linear;
 };
 
 struct Particle {

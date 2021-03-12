@@ -67,7 +67,7 @@ impl RenderResources {
                     uniform(1, wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT),
                     sampler(2, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::COMPUTE),
                     uniform(3, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::COMPUTE),
-                    uniform(4, wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::COMPUTE),
+                    uniform(4, wgpu::ShaderStage::all()),
                 ],
             }),
             single_texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -105,7 +105,11 @@ impl RenderResources {
                         wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
                         false,
                     ),
-                    storage(1, wgpu::ShaderStage::COMPUTE, false),
+                    storage(
+                        1,
+                        wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
+                        false,
+                    ),
                 ],
             }),
             land_craft_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
