@@ -1,0 +1,73 @@
+#version 450
+
+#include "includes/structs.glsl"
+#include "includes/utils.glsl"
+#include "includes/matrices.glsl"
+
+layout(set = 0, binding = 4) uniform TimeBuffer {
+    Time time;
+};
+
+layout(set = 0, binding = 2) uniform sampler u_sampler;
+
+layout(set = 1, binding = 0) buffer LandCraftBuffer {
+    LandCraft crafts[];
+};
+
+layout(set = 1, binding = 1) uniform texture2D height_map;
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+const float SCENE_SIZE = 4.0;
+
+float sample_height(vec2 pos) {
+    vec2 uv = pos / SCENE_SIZE + 0.5;
+    return textureLod(sampler2D(height_map, u_sampler), uv, 0).r;
+}
+
+// We do things this way to avoid atan/atan2 which are slow and maybe branchy.
+vec2 calculate_sine_and_cosine(float opposite, float adjacent) {
+    // Adjacent is a constant so the inner part should because a MAD which is
+    // maybe faster than a dot.
+    float rcp_hypotenuse = inversesqrt(opposite * opposite + adjacent * adjacent);
+    // sohcahtoa!
+    return vec2(opposite, adjacent) * rcp_hypotenuse;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+
+    if (index >= crafts.length()) {
+        return;
+    }
+
+    LandCraft craft = crafts[index];
+
+    vec2 velocity = vec2(cos(craft.facing), sin(craft.facing)) * (0.15 * time.delta_time);
+    craft.position.xz += velocity;
+    craft.position.xz = repeat_over_bounds(craft.position.xz, 2.0);
+
+    float height = sample_height(craft.position.xz);
+    craft.position.y = height;
+
+    // Calculate the angle of the craft.
+
+    const float COMPARE_DIST = 0.02;
+
+    mat2 rotation_2d = rotation_matrix(craft.facing);
+
+    vec2 forwards_pos = craft.position.xz + rotation_2d * vec2(COMPARE_DIST, 0.0);
+    float forwards_height = sample_height(forwards_pos);
+
+    mat3 z_rotation = rotation_matrix_z(calculate_sine_and_cosine(height - forwards_height, COMPARE_DIST));
+
+    vec2 left_pos = craft.position.xz + rotation_2d * vec2(0.0, -COMPARE_DIST);
+    float left_height = sample_height(left_pos);
+
+    mat3 x_rotation = rotation_matrix_x(calculate_sine_and_cosine(height - left_height, COMPARE_DIST));
+
+    craft.rotation_matrix = rotation_matrix_y(craft.facing) * x_rotation * z_rotation;
+
+    crafts[index] = craft;
+}
+

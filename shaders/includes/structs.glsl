@@ -60,3 +60,9 @@ struct Time {
     float time_since_start;
     float delta_time;
 };
+
+struct LandCraft {
+    vec3 position;
+    float facing;
+    mat3 rotation_matrix;
+};
