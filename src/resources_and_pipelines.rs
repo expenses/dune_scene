@@ -184,6 +184,20 @@ impl Pipelines {
             attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
         };
 
+        let depth_write = wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+            clamp_depth: false,
+        };
+
+        let backface_culling = wgpu::PrimitiveState {
+            cull_mode: wgpu::CullMode::Back,
+            ..Default::default()
+        };
+
         Self {
             scene_pipeline: {
                 let scene_pipeline_layout =
@@ -215,18 +229,8 @@ impl Pipelines {
                         entry_point: "main",
                         targets: &[FRAMEBUFFER_FORMAT.into()],
                     }),
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
@@ -261,18 +265,8 @@ impl Pipelines {
                         entry_point: "main",
                         targets: &[FRAMEBUFFER_FORMAT.into()],
                     }),
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
@@ -280,7 +274,11 @@ impl Pipelines {
                 let land_craft_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("land craft pipeline layout"),
-                        bind_group_layouts: &[&resources.main_bgl, &resources.land_craft_bgl, shadow_maps.rendering_bind_group_layout()],
+                        bind_group_layouts: &[
+                            &resources.main_bgl,
+                            &resources.land_craft_bgl,
+                            shadow_maps.rendering_bind_group_layout(),
+                        ],
                         push_constant_ranges: &[],
                     });
 
@@ -305,18 +303,8 @@ impl Pipelines {
                         entry_point: "main",
                         targets: &[FRAMEBUFFER_FORMAT.into()],
                     }),
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
@@ -341,14 +329,7 @@ impl Pipelines {
                         topology: wgpu::PrimitiveTopology::LineList,
                         ..Default::default()
                     },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
+                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
@@ -448,18 +429,8 @@ impl Pipelines {
                         buffers: &[vertex_buffer_layout.clone()],
                     },
                     fragment: None,
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
@@ -487,18 +458,8 @@ impl Pipelines {
                         buffers: &[vertex_buffer_layout.clone()],
                     },
                     fragment: None,
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
@@ -526,18 +487,8 @@ impl Pipelines {
                         buffers: &[vertex_buffer_layout.clone()],
                     },
                     fragment: None,
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: wgpu::CullMode::Back,
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                        clamp_depth: false,
-                    }),
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
@@ -583,7 +534,6 @@ impl Pipelines {
                         bind_group_layouts: &[&resources.main_bgl, &resources.land_craft_bgl],
                         push_constant_ranges: &[],
                     });
-
 
                 let cs_land_craft_movement =
                     wgpu::include_spirv!("../shaders/compiled/land_craft_movement.comp.spv");
