@@ -619,6 +619,7 @@ async fn run() -> anyhow::Result<()> {
                     render_pass.set_pipeline(&pipelines.land_craft_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);
                     render_pass.set_bind_group(1, &land_craft_bind_group, &[]);
+                    render_pass.set_bind_group(2, cascaded_shadow_maps.rendering_bind_group(), &[]);
                     render_pass.set_vertex_buffer(0, land_craft.vertices.slice(..));
                     render_pass.set_index_buffer(land_craft.indices.slice(..), INDEX_FORMAT);
                     render_pass.draw_indexed(0..land_craft.num_indices, 0, 0..num_land_craft);
