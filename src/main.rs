@@ -151,7 +151,6 @@ async fn run() -> anyhow::Result<()> {
         usage: wgpu::BufferUsage::STORAGE,
         contents: bytemuck::bytes_of(&primitives::ParticlesBufferInfo {
             colour: Vec3::new(0.5, 0.75, 1.0),
-            half_size_constant: 0.001,
             half_size_linear: 0.02,
             ..Default::default()
         }),

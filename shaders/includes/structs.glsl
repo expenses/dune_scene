@@ -48,7 +48,6 @@ struct ParticlesBufferInfo {
     vec3 colour;
     uint offset;
     float particle_duration;
-    float half_size_constant;
     float half_size_linear;
 };
 

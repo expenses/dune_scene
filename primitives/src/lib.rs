@@ -130,7 +130,6 @@ pub struct ParticlesBufferInfo {
     pub colour: Vec3,
     pub _offset: u32,
     pub _particle_duration: f32,
-    pub half_size_constant: f32,
     pub half_size_linear: f32,
 }
 

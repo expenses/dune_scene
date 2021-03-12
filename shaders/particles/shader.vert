@@ -40,8 +40,7 @@ void main() {
 
     out_colour = vec4(particles_info.colour, alpha);
 
-    float half_size = particles_info.half_size_constant +
-        particles_info.half_size_linear * particle.time_alive_percentage;
+    float half_size = particles_info.half_size_linear * particle.time_alive_percentage;
 
     vec2 coord = COORDS[gl_VertexIndex % 6];
 
