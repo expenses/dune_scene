@@ -1,6 +1,6 @@
 #version 450
 
-#include "includes/structs.glsl"
+#include "../includes/structs.glsl"
 
 layout(set = 0, binding = 0) uniform CameraUniform {
     Camera camera;

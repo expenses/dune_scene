@@ -203,9 +203,9 @@ impl Pipelines {
                         push_constant_ranges: &[],
                     });
 
-                let vs_scene = wgpu::include_spirv!("../shaders/compiled/scene.vert.spv");
+                let vs_scene = wgpu::include_spirv!("../shaders/compiled/scene_shader.vert.spv");
                 let vs_scene = device.create_shader_module(&vs_scene);
-                let fs_scene = wgpu::include_spirv!("../shaders/compiled/scene.frag.spv");
+                let fs_scene = wgpu::include_spirv!("../shaders/compiled/scene_shader.frag.spv");
                 let fs_scene = device.create_shader_module(&fs_scene);
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -249,9 +249,9 @@ impl Pipelines {
                         push_constant_ranges: &[],
                     });
 
-                let vs_ship = wgpu::include_spirv!("../shaders/compiled/ship.vert.spv");
+                let vs_ship = wgpu::include_spirv!("../shaders/compiled/ship_shader.vert.spv");
                 let vs_ship = device.create_shader_module(&vs_ship);
-                let fs_ship = wgpu::include_spirv!("../shaders/compiled/ship.frag.spv");
+                let fs_ship = wgpu::include_spirv!("../shaders/compiled/ship_shader.frag.spv");
                 let fs_ship = device.create_shader_module(&fs_ship);
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -283,7 +283,7 @@ impl Pipelines {
                 })
             },
             land_craft_pipeline: {
-                let vs_land_craft = wgpu::include_spirv!("../shaders/compiled/land_craft.vert.spv");
+                let vs_land_craft = wgpu::include_spirv!("../shaders/compiled/land_craft_shader.vert.spv");
                 let vs_land_craft = device.create_shader_module(&vs_land_craft);
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -347,7 +347,7 @@ impl Pipelines {
                 })
             },
             particles_pipeline: {
-                let vs_particles = wgpu::include_spirv!("../shaders/compiled/particles.vert.spv");
+                let vs_particles = wgpu::include_spirv!("../shaders/compiled/particles_shader.vert.spv");
                 let vs_particles = device.create_shader_module(&vs_particles);
 
                 let fs_alpha_circle =

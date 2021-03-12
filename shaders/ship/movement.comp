@@ -1,8 +1,8 @@
 #version 450
 
-#include "includes/structs.glsl"
-#include "includes/utils.glsl"
-#include "includes/matrices.glsl"
+#include "../includes/structs.glsl"
+#include "../includes/utils.glsl"
+#include "../includes/matrices.glsl"
 
 layout(set = 0, binding = 3) uniform SettingsUniform {
     Settings settings;
