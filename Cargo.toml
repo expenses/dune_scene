@@ -21,6 +21,7 @@ rand = "0.8.3"
 
 primitives = { path = "primitives" }
 cascaded-shadow-maps = { path = "cascaded-shadow-maps" }
+animation = { path = "animation" }
 
 # Compile all dependencies in release mode
 [profile.dev.package."*"]
@@ -31,4 +32,5 @@ members = [
     ".",
     "primitives",
     "cascaded-shadow-maps",
+    "animation",
 ]

@@ -34,6 +34,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "animation"
+version = "0.1.0"
+dependencies = [
+ "gltf",
+ "log",
+ "ordered-float",
+ "ultraviolet 0.8.0-alpha.0",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -145,7 +155,7 @@ name = "cascaded-shadow-maps"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "ultraviolet",
+ "ultraviolet 0.7.5",
  "wgpu",
 ]
 
@@ -417,6 +427,7 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 name = "dune-scene"
 version = "0.1.0"
 dependencies = [
+ "animation",
  "anyhow",
  "bytemuck",
  "cascaded-shadow-maps",
@@ -429,7 +440,7 @@ dependencies = [
  "pollster",
  "primitives",
  "rand",
- "ultraviolet",
+ "ultraviolet 0.7.5",
  "wgpu",
  "winit",
 ]
@@ -1269,6 +1280,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10acf907b94fc1b1a152d08ef97e7759650268cf986bf127f387e602b02c7e5a"
 
 [[package]]
+name = "ordered-float"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "766f840da25490628d8e63e529cd21c014f6600c6b8517add12a6fa6167a6218"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "owned_ttf_parser"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1359,7 +1379,7 @@ name = "primitives"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "ultraviolet",
+ "ultraviolet 0.7.5",
 ]
 
 [[package]]
@@ -1700,7 +1720,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6650a58414f856056ccc651abd3b9d80c384206250c3a621224497503a0f9f2"
 dependencies = [
  "bytemuck",
- "wide",
+ "wide 0.5.5",
+]
+
+[[package]]
+name = "ultraviolet"
+version = "0.8.0-alpha.0"
+source = "git+https://github.com/termhn/ultraviolet#9653d78b68aa19659b904d33d33239bbd2907504"
+dependencies = [
+ "wide 0.6.4",
 ]
 
 [[package]]
@@ -1944,6 +1972,16 @@ name = "wide"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80b27c76ecc22bd81fe681d9c9eac81e002d7b7048105ee4608f57c4e92e9211"
+dependencies = [
+ "bytemuck",
+ "safe_arch",
+]
+
+[[package]]
+name = "wide"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c51f160ef6333906fad7d31a2010d449148dd1a26bc377e0a1ace2cc9e1e1ee"
 dependencies = [
  "bytemuck",
  "safe_arch",

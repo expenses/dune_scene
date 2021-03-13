@@ -1,0 +1,13 @@
+[package]
+name = "animation"
+version = "0.1.0"
+authors = ["Ashley Ruglys <ashley.ruglys@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+gltf = { version = "0.15.2", default-features = false, features = ["utils", "names"] }
+log = "0.4.14"
+ordered-float = "2.1.1"
+ultraviolet = { git = "https://github.com/termhn/ultraviolet" }
