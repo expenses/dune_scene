@@ -11,6 +11,7 @@ pub struct RenderResources {
     pub ship_bgl: wgpu::BindGroupLayout,
     pub particles_bgl: wgpu::BindGroupLayout,
     pub land_craft_bgl: wgpu::BindGroupLayout,
+    pub animation_bgl: wgpu::BindGroupLayout,
     pub sampler: wgpu::Sampler,
 }
 
@@ -121,6 +122,18 @@ impl RenderResources {
                         false,
                     ),
                     texture(1, wgpu::ShaderStage::COMPUTE),
+                ],
+            }),
+            animation_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("animation bind group layout"),
+                entries: &[
+                    storage(0, wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX, false),
+                    uniform(1, wgpu::ShaderStage::COMPUTE),
+                    storage(2, wgpu::ShaderStage::COMPUTE, false),
+                    storage(3, wgpu::ShaderStage::COMPUTE, false),
+                    storage(4, wgpu::ShaderStage::COMPUTE, true),
+                    storage(5, wgpu::ShaderStage::COMPUTE, true),
+                    storage(6, wgpu::ShaderStage::COMPUTE, true),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {

@@ -50,7 +50,10 @@ async fn run() -> anyhow::Result<()> {
             &wgpu::DeviceDescriptor {
                 label: Some("device"),
                 features: wgpu::Features::empty(),
-                limits: wgpu::Limits::default(),
+                limits: wgpu::Limits {
+                    max_storage_buffers_per_shader_stage: 6,
+                    ..Default::default()
+                },
             },
             None,
         )
