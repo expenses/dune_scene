@@ -5,7 +5,7 @@ use cascaded_shadow_maps::CascadedShadowMaps;
 use model_loading::Scene;
 use rand::Rng;
 use resources_and_pipelines::{Pipelines, RenderResources};
-use ultraviolet::{Vec2, Vec3};
+use ultraviolet::{Mat4, Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 fn main() -> anyhow::Result<()> {
@@ -200,6 +200,9 @@ async fn run() -> anyhow::Result<()> {
     let land_craft_bytes = include_bytes!("../models/landcraft.glb");
     let land_craft = model_loading::LandCraft::load(land_craft_bytes, &device, &queue, &resources)?;
 
+    let explosion_bytes = include_bytes!("../models/explosion.glb");
+    let explosion = model_loading::Explosion::load(explosion_bytes, &device, &queue, &resources)?;
+
     // Now we can create a window.
 
     let event_loop = winit::event_loop::EventLoop::new();
@@ -384,6 +387,47 @@ async fn run() -> anyhow::Result<()> {
         ],
     });
 
+    let mut explosion_joints_vec: Vec<_> = (0..10)
+        .map(|_| {
+            (
+                explosion.animation_joints.clone(),
+                rng.gen_range(0.0..=explosion.animation.total_time()),
+            )
+        })
+        .collect();
+
+    let joint_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("animation joints"),
+        usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+        size: 10 * std::mem::size_of::<Mat4>() as u64,
+        mapped_at_creation: false,
+    });
+
+    let animation_bgl = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("animation bind group"),
+        layout: &resources.animation_bgl,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: joint_buffer.as_entire_binding(),
+        }],
+    });
+
+    let position_instances: Vec<_> = (0..10)
+        .map(|_| {
+            Vec3::new(
+                rng.gen_range(-2.0..=2.0),
+                rng.gen_range(0.0..=0.5),
+                rng.gen_range(-2.0..=2.0),
+            )
+        })
+        .collect();
+
+    let position_instances_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("position instances"),
+        usage: wgpu::BufferUsage::VERTEX,
+        contents: bytemuck::cast_slice(&position_instances),
+    });
+
     let mut render_sun_dir = false;
     let mut move_vehicles = true;
     let mut render_ships = true;
@@ -505,6 +549,27 @@ async fn run() -> anyhow::Result<()> {
                         }),
                     );
 
+                    let mut joint_transforms = Vec::new();
+
+                    for (explosion_joints, animation_time) in &mut explosion_joints_vec {
+                        *animation_time =
+                            (*animation_time + delta_time) % explosion.animation.total_time();
+                        explosion.animation.animate(
+                            explosion_joints,
+                            *animation_time,
+                            &explosion.depth_first_nodes,
+                        );
+
+                        for mat in explosion_joints.iter(
+                            &explosion.joint_indices_to_node_indices,
+                            &explosion.inverse_bind_matrices[..],
+                        ) {
+                            joint_transforms.push(mat);
+                        }
+                    }
+
+                    queue.write_buffer(&joint_buffer, 0, bytemuck::cast_slice(&joint_transforms));
+
                     let mut encoder =
                         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                             label: Some("render encoder"),
@@ -610,6 +675,15 @@ async fn run() -> anyhow::Result<()> {
                             },
                         ),
                     });
+
+                    render_pass.set_pipeline(&pipelines.explosions_pipeline);
+                    render_pass.set_bind_group(0, &bind_group, &[]);
+                    render_pass.set_bind_group(1, &explosion.texture_bind_group, &[]);
+                    render_pass.set_bind_group(2, &animation_bgl, &[]);
+                    render_pass.set_vertex_buffer(0, explosion.vertices.slice(..));
+                    render_pass.set_vertex_buffer(1, position_instances_buffer.slice(..));
+                    render_pass.set_index_buffer(explosion.indices.slice(..), INDEX_FORMAT);
+                    render_pass.draw_indexed(0..explosion.num_indices, 0, 0..10);
 
                     if render_ships {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);
@@ -1061,4 +1135,92 @@ fn create_particle_bind_group(
             },
         ],
     })
+}
+
+fn create_animation_bind_group(
+    device: &wgpu::Device,
+    resources: &RenderResources,
+    num_instances: usize,
+    depth_first_nodes: &[primitives::NodeAndParent],
+    joint_indices_to_node_indices: &[u32],
+    inverse_bind_matrices: &[Mat4],
+) -> (wgpu::Buffer, wgpu::BindGroup) {
+    let num_joints = joint_indices_to_node_indices.len();
+    let num_nodes = depth_first_nodes.len();
+
+    debug_assert_eq!(inverse_bind_matrices.len(), num_joints);
+
+    let joint_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("animation joints"),
+        usage: wgpu::BufferUsage::STORAGE,
+        size: (num_joints * num_instances * std::mem::size_of::<Mat4>()) as u64,
+        mapped_at_creation: false,
+    });
+
+    let local_transforms = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("animation local transforms"),
+        usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+        size: (num_nodes * num_instances * std::mem::size_of::<primitives::Similarity>()) as u64,
+        mapped_at_creation: false,
+    });
+
+    // todo: might need to set these at the start.
+    let global_transforms = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("animation global transforms"),
+        usage: wgpu::BufferUsage::STORAGE,
+        size: (num_nodes * num_instances * std::mem::size_of::<primitives::Similarity>()) as u64,
+        mapped_at_creation: false,
+    });
+
+    let depth_first_nodes = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("animation depth first nodes"),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(depth_first_nodes),
+    });
+
+    let joint_indices_to_node_indices =
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("animation joint indices to node indices"),
+            usage: wgpu::BufferUsage::STORAGE,
+            contents: bytemuck::cast_slice(joint_indices_to_node_indices),
+        });
+
+    let inverse_bind_matrices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("animation inverse bind matrices"),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(inverse_bind_matrices),
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("animation bind group"),
+        layout: &resources.animation_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: joint_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: local_transforms.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: global_transforms.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: depth_first_nodes.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: joint_indices_to_node_indices.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: inverse_bind_matrices.as_entire_binding(),
+            },
+        ],
+    });
+
+    (local_transforms, bind_group)
 }

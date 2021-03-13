@@ -114,7 +114,7 @@ pub fn read_animations(
         .collect()
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AnimationJoints {
     global_transforms: Vec<Similarity3>,
     local_transforms: Vec<Similarity3>,
@@ -173,21 +173,12 @@ impl AnimationJoints {
     }
 }
 
+#[derive(Debug)]
 struct Channel<T> {
     interpolation: Interpolation,
     inputs: Vec<f32>,
     outputs: Vec<T>,
     node_index: usize,
-}
-
-impl<T> fmt::Debug for Channel<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Channel")
-            .field("interpolation", &self.interpolation)
-            .field("num_values", &self.inputs.len())
-            .field("node_index", &self.node_index)
-            .finish()
-    }
 }
 
 impl<T: Interpolate> Channel<T> {

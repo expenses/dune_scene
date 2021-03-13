@@ -10,7 +10,7 @@ bytemuck = "1.5.1"
 gltf = { version = "0.15.2", default-features = false, features = ["utils", "names", "KHR_lights_punctual"] }
 image = { version = "0.23.13", default-features = false, features = ["png"] }
 pollster = "0.2.1"
-ultraviolet = "0.7.5"
+ultraviolet = { git = "https://github.com/termhn/ultraviolet" }
 wgpu = "0.7.0"
 winit = "0.24.0"
 env_logger = { version = "0.8.3", default-features = false, features = ["humantime", "atty", "termcolor"] }

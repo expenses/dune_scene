@@ -159,3 +159,27 @@ pub struct LandCraft {
     pub facing: f32,
     pub _rotation_matrix: [Vec4; 3],
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Similarity {
+    pub scale: f32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct NodeAndParent {
+    pub node_index: u32,
+    pub parent_index: i32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct AnimatedVertex {
+    pub position: Vec3,
+    pub normal: Vec3,
+    pub uv: Vec2,
+    pub tangent: Vec4,
+    pub joint_indices: [u16; 4],
+    pub joint_weights: Vec4,
+}

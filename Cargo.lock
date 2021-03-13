@@ -40,7 +40,7 @@ dependencies = [
  "gltf",
  "log",
  "ordered-float",
- "ultraviolet 0.8.0-alpha.0",
+ "ultraviolet",
 ]
 
 [[package]]
@@ -155,7 +155,7 @@ name = "cascaded-shadow-maps"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "ultraviolet 0.7.5",
+ "ultraviolet",
  "wgpu",
 ]
 
@@ -440,7 +440,7 @@ dependencies = [
  "pollster",
  "primitives",
  "rand",
- "ultraviolet 0.7.5",
+ "ultraviolet",
  "wgpu",
  "winit",
 ]
@@ -1379,7 +1379,7 @@ name = "primitives"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "ultraviolet 0.7.5",
+ "ultraviolet",
 ]
 
 [[package]]
@@ -1715,20 +1715,11 @@ checksum = "3e5d7cd7ab3e47dda6e56542f4bbf3824c15234958c6e1bd6aaa347e93499fdc"
 
 [[package]]
 name = "ultraviolet"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6650a58414f856056ccc651abd3b9d80c384206250c3a621224497503a0f9f2"
-dependencies = [
- "bytemuck",
- "wide 0.5.5",
-]
-
-[[package]]
-name = "ultraviolet"
 version = "0.8.0-alpha.0"
 source = "git+https://github.com/termhn/ultraviolet#9653d78b68aa19659b904d33d33239bbd2907504"
 dependencies = [
- "wide 0.6.4",
+ "bytemuck",
+ "wide",
 ]
 
 [[package]]
@@ -1965,16 +1956,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72fa9ba80626278fd87351555c363378d08122d7601e58319be3d6fa85a87747"
 dependencies = [
  "bitflags",
-]
-
-[[package]]
-name = "wide"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80b27c76ecc22bd81fe681d9c9eac81e002d7b7048105ee4608f57c4e92e9211"
-dependencies = [
- "bytemuck",
- "safe_arch",
 ]
 
 [[package]]

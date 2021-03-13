@@ -1,6 +1,6 @@
 use crate::{DEPTH_FORMAT, FRAMEBUFFER_FORMAT};
 use cascaded_shadow_maps::CascadedShadowMaps;
-use primitives::Vertex;
+use primitives::{AnimatedVertex, Vertex};
 
 /// All the permament resources that we can load before creating a window.
 pub struct RenderResources {
@@ -127,13 +127,16 @@ impl RenderResources {
             animation_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("animation bind group layout"),
                 entries: &[
-                    storage(0, wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX, false),
-                    uniform(1, wgpu::ShaderStage::COMPUTE),
-                    storage(2, wgpu::ShaderStage::COMPUTE, false),
-                    storage(3, wgpu::ShaderStage::COMPUTE, false),
-                    storage(4, wgpu::ShaderStage::COMPUTE, true),
-                    storage(5, wgpu::ShaderStage::COMPUTE, true),
-                    storage(6, wgpu::ShaderStage::COMPUTE, true),
+                    storage(
+                        0,
+                        wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
+                        false,
+                    ),
+                    //storage(1, wgpu::ShaderStage::COMPUTE, false),
+                    //storage(2, wgpu::ShaderStage::COMPUTE, false),
+                    //storage(3, wgpu::ShaderStage::COMPUTE, true),
+                    //storage(4, wgpu::ShaderStage::COMPUTE, true),
+                    //storage(5, wgpu::ShaderStage::COMPUTE, true),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
@@ -162,6 +165,7 @@ pub struct Pipelines {
     pub particles_movement_pipeline: wgpu::ComputePipeline,
     pub land_craft_movement_pipeline: wgpu::ComputePipeline,
     pub bake_height_map_pipeline: wgpu::RenderPipeline,
+    pub explosions_pipeline: wgpu::RenderPipeline,
 }
 
 impl Pipelines {
@@ -199,6 +203,18 @@ impl Pipelines {
             array_stride: std::mem::size_of::<Vertex>() as u64,
             step_mode: wgpu::InputStepMode::Vertex,
             attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
+        };
+
+        let animated_vertex_buffer_layout = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<AnimatedVertex>() as u64,
+            step_mode: wgpu::InputStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4, 4 => Ushort4, 5 => Float4],
+        };
+
+        let animated_position_instance_layout = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<ultraviolet::Vec3>() as u64,
+            step_mode: wgpu::InputStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![6 => Float3],
         };
 
         let depth_write = wgpu::DepthStencilState {
@@ -593,6 +609,47 @@ impl Pipelines {
                     }),
                     primitive: wgpu::PrimitiveState::default(),
                     depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
+            explosions_pipeline: {
+                let explosions_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("explosions pipeline layout"),
+                        bind_group_layouts: &[
+                            &resources.main_bgl,
+                            &resources.single_texture_bgl,
+                            &resources.animation_bgl,
+                        ],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_explosions =
+                    wgpu::include_spirv!("../shaders/compiled/explosions_shader.vert.spv");
+                let vs_explosions = device.create_shader_module(&vs_explosions);
+
+                let fs_explosions =
+                    wgpu::include_spirv!("../shaders/compiled/explosions_shader.frag.spv");
+                let fs_explosions = device.create_shader_module(&fs_explosions);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("explosions pipeline"),
+                    layout: Some(&explosions_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_explosions,
+                        entry_point: "main",
+                        buffers: &[
+                            animated_vertex_buffer_layout.clone(),
+                            animated_position_instance_layout.clone(),
+                        ],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_explosions,
+                        entry_point: "main",
+                        targets: &[FRAMEBUFFER_FORMAT.into()],
+                    }),
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },

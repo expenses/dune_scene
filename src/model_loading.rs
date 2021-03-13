@@ -1,5 +1,5 @@
 use crate::RenderResources;
-use primitives::{Sun, Vec3A, Vertex};
+use primitives::{AnimatedVertex, Sun, Vec3A, Vertex};
 use std::collections::HashMap;
 use ultraviolet::{Mat4, Vec2, Vec3};
 use wgpu::util::DeviceExt;
@@ -309,6 +309,24 @@ impl NodeTree {
 
         transform_sum
     }
+
+    // It turns out that we can just reverse the array to iter through nodes depth first! Useful for applying animations.
+    fn iter_depth_first(&self) -> impl Iterator<Item = (usize, Option<usize>)> + '_ {
+        self.inner
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(index, &(_, parent))| {
+                (
+                    index,
+                    if parent != usize::max_value() {
+                        Some(parent)
+                    } else {
+                        None
+                    },
+                )
+            })
+    }
 }
 
 pub struct Ship {
@@ -506,6 +524,180 @@ impl LandCraft {
             indices,
             num_indices,
             texture_bind_group,
+        })
+    }
+}
+
+pub struct Explosion {
+    pub vertices: wgpu::Buffer,
+    pub indices: wgpu::Buffer,
+    pub num_indices: u32,
+    pub texture_bind_group: wgpu::BindGroup,
+
+    pub animation: animation::Animation,
+    pub animation_joints: animation::AnimationJoints,
+    pub joint_indices_to_node_indices: Vec<usize>,
+    pub inverse_bind_matrices: Vec<Mat4>,
+    pub depth_first_nodes: Vec<(usize, Option<usize>)>,
+}
+
+impl Explosion {
+    pub fn load(
+        bytes: &[u8],
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        resources: &RenderResources,
+    ) -> anyhow::Result<Self> {
+        let gltf = gltf::Gltf::from_slice(bytes)?;
+
+        let buffer_blob = gltf.blob.as_ref().unwrap();
+
+        let node_tree = NodeTree::new(&gltf);
+
+        assert!(gltf.skins().count() <= 1);
+        let skin = gltf.skins().next();
+        if let Some(skin) = skin.as_ref() {
+            assert!(skin.skeleton().is_none());
+        }
+
+        println!("{:?}", skin.is_some());
+
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for (node, mesh) in gltf
+            .nodes()
+            .filter_map(|node| node.mesh().map(|mesh| (node, mesh)))
+        {
+            let transform = if node.skin().is_some() {
+                // We can't apply transformations on animated models, but we also don't need to..
+                Mat4::identity()
+            } else {
+                // We allow combining animated and non animated meshes
+                node_tree.transform_of(node.index())
+            };
+
+            for primitive in mesh.primitives() {
+                let reader = primitive.reader(|buffer| {
+                    assert_eq!(buffer.index(), 0);
+                    Some(buffer_blob)
+                });
+
+                let num_vertices = vertices.len() as u16;
+
+                let read_indices = match reader.read_indices().unwrap() {
+                    gltf::mesh::util::ReadIndices::U16(indices) => indices,
+                    gltf::mesh::util::ReadIndices::U32(_) => {
+                        return Err(anyhow::anyhow!("U32 indices not supported"))
+                    }
+                    _ => unreachable!(),
+                };
+
+                indices.extend(read_indices.map(|index| index + num_vertices));
+
+                let positions = reader.read_positions().unwrap();
+                let uvs = reader.read_tex_coords(0).unwrap().into_f32();
+                let normals = reader.read_normals().unwrap();
+                let tangents = reader.read_tangents().unwrap();
+
+                let mut joint_indices = reader.read_joints(0).map(|iter| iter.into_u16());
+                let mut joint_weights = reader.read_weights(0).map(|iter| iter.into_f32());
+
+                positions.zip(uvs).zip(normals).zip(tangents).for_each(
+                    |(((position, uv), normal), tangent)| {
+                        let joint_indices = match joint_indices {
+                            Some(ref mut iter) => iter.next().unwrap(),
+                            None => [node.index() as u16; 4],
+                        };
+                        let joint_weights = match joint_weights {
+                            Some(ref mut iter) => iter.next().unwrap(),
+                            None => [1.0, 0.0, 0.0, 0.0],
+                        };
+
+                        let position: Vec3 = position.into();
+
+                        vertices.push(AnimatedVertex {
+                            position: transform.transform_vec3(position),
+                            uv: uv.into(),
+                            normal: normal.into(),
+                            tangent: tangent.into(),
+                            joint_indices,
+                            joint_weights: joint_weights.into(),
+                        });
+                    },
+                )
+            }
+        }
+
+        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("vertices"),
+            usage: wgpu::BufferUsage::VERTEX,
+            contents: bytemuck::cast_slice(&vertices),
+        });
+
+        let num_indices = indices.len() as u32;
+
+        let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("indices"),
+            usage: wgpu::BufferUsage::INDEX,
+            contents: bytemuck::cast_slice(&indices),
+        });
+
+        let image = gltf.images().next().unwrap();
+        let image = load_image(&image, buffer_blob, device, queue)?;
+
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ship texture bind group"),
+            layout: &resources.single_texture_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&image),
+            }],
+        });
+
+        let mut animations =
+            animation::read_animations(gltf.animations(), &buffer_blob, "explosion");
+
+        assert_eq!(animations.len(), 1);
+        let animation = animations.remove(0);
+
+        let depth_first_nodes: Vec<_> = node_tree.iter_depth_first().collect();
+
+        let animation_joints = animation::AnimationJoints::new(gltf.nodes(), &depth_first_nodes);
+
+        let joint_indices_to_node_indices = if let Some(skin) = skin.as_ref() {
+            skin.joints().map(|node| node.index()).collect()
+        } else {
+            gltf.nodes().map(|node| node.index()).collect()
+        };
+
+        let inverse_bind_matrices = if let Some(skin) = skin.as_ref() {
+            skin.reader(|buffer| {
+                assert_eq!(buffer.index(), 0);
+                Some(buffer_blob)
+            })
+            .read_inverse_bind_matrices()
+            .ok_or_else(|| anyhow::anyhow!("Missing inverse bind matrices"))?
+            .map(|mat| mat.into())
+            .collect()
+        } else {
+            gltf.nodes()
+                .map(|node| node_tree.transform_of(node.index()).inversed())
+                .collect()
+        };
+
+        println!("{:?}", inverse_bind_matrices);
+
+        Ok(Self {
+            vertices,
+            indices,
+            num_indices,
+            texture_bind_group,
+            animation,
+            depth_first_nodes,
+            animation_joints,
+            joint_indices_to_node_indices,
+            inverse_bind_matrices,
         })
     }
 }
