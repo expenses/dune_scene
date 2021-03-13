@@ -1,0 +1,112 @@
+
+#version 450
+
+#include "includes/structs.glsl"
+#include "includes/matrices.glsl"
+
+mat4 similarity_to_mat4(Similarity sim) {
+    mat4 scale_matrix = scale_matrix(sim.scale);
+
+    return scale_matrix;
+}
+
+layout(set = 0, binding = 4) uniform TimeBuffer {
+    Time time;
+};
+
+// These cover all instances.
+
+layout(set = 1, binding = 0) writeonly buffer JointTransforms {
+    mat4 joint_transforms[];
+};
+
+layout(set = 1, binding = 1) buffer LocalTransforms {
+    Similarity local_transforms[];
+};
+
+layout(set = 1, binding = 2) buffer GlobalTransforms {
+    mat4 global_transforms[];
+};
+
+layout(set = 1, binding = 3) uniform Uniform {
+    uint num_nodes;
+    uint num_joints;
+};
+
+layout(set = 1, binding = 4) readonly buffer DepthFirstNodes {
+    NodeAndParent depth_first_nodes[];
+};
+
+layout(set = 1, binding = 5) readonly buffer JointIndicesToNodeIndices {
+    uint joint_indices_to_node_indices[];
+};
+
+layout(set = 1, binding = 6) readonly buffer InverseBindMatrices {
+    mat4 inverse_bind_matrices[];
+};
+
+// 1 each for translation/rotation/scale
+
+layout(set = 2, binding = 0) readonly buffer ScaleInputs {
+    float scale_inputs[];
+};
+
+layout(set = 2, binding = 1) readonly buffer ScaleOutputs {
+    float scale_outputs[];
+};
+
+layout(set = 2, binding = 2) readonly buffer ScaleChannels {
+    Channel scale_channels[];
+};
+
+const float INVALID = -0.124;
+
+#define CHANNEL_INPUTS scale_inputs
+#define CHANNEL_OUTPUTS scale_outputs
+#define SAMPLE_TYPE float
+#define INVALID INVALID
+#include "includes/animation.glsl"
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// todo: split up into a channel interpolation part and a joint transform calculation part.
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+
+    uint transforms_offset = index * num_nodes;
+    uint joints_offset = index * num_joints;
+
+    if (transforms_offset >= local_transforms.length()) {
+        return;
+    }
+
+    float t = fract(time.time_since_start);
+
+    for (uint i = 0; i < scale_channels.length(); i++) {
+        Channel channel = scale_channels[i];
+        float scale = sample_cubic_spline_float(t, channel);
+        if (scale != INVALID) {
+            local_transforms[transforms_offset + channel.node_index].scale = scale;
+        }
+    }
+
+    for (uint i = 0; i < depth_first_nodes.length(); i++) {
+        NodeAndParent indicies = depth_first_nodes[i];
+
+        mat4 parent_transform = global_transforms[transforms_offset + indicies.parent_index];
+
+        uint node_index = transforms_offset + indicies.node_index;
+
+        Similarity local_transform = local_transforms[node_index];
+        global_transforms[node_index] = parent_transform * similarity_to_mat4(local_transform);
+    }
+
+    for (uint joint_index = 0; joint_index < joint_indices_to_node_indices.length(); joint_index++) {
+        uint node_index = joint_indices_to_node_indices[joint_index];
+        mat4 inverse_bind_matrix = inverse_bind_matrices[joint_index];
+        mat4 global_transform = global_transforms[node_index];
+
+        joint_transforms[joints_offset + joint_index] = global_transform * inverse_bind_matrix;
+    }
+}

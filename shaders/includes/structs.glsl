@@ -69,3 +69,18 @@ struct LandCraft {
     float facing;
     mat3 rotation_matrix;
 };
+
+struct Channel {
+    uint offset;
+    uint size;
+    uint node_index;
+};
+
+struct Similarity {
+    float scale;
+};
+
+struct NodeAndParent {
+    uint node_index;
+    uint parent_index;
+};

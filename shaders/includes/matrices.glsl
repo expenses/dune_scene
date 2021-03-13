@@ -55,3 +55,12 @@ mat2 rotation_matrix(float theta) {
         -sin(theta), cos(theta)
     );
 }
+
+mat4 scale_matrix(float scale) {
+    return mat4(
+        vec4(scale, 0.0, 0.0, 0.0),
+        vec4(0.0, scale, 0.0, 0.0),
+        vec4(0.0, 0.0, scale, 0.0),
+        vec4(0.0, 0.0, 0.0, 1.0)
+    );
+}
