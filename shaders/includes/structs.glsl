@@ -82,5 +82,5 @@ struct Similarity {
 
 struct NodeAndParent {
     uint node_index;
-    uint parent_index;
+    int parent_index;
 };

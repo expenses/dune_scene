@@ -16,66 +16,37 @@ Similarity similarity_mul(Similarity a, Similarity b) {
     return c;
 }
 
-layout(set = 0, binding = 4) uniform TimeBuffer {
-    Time time;
-};
-
-// These cover all instances.
-
-layout(set = 1, binding = 0) writeonly buffer JointTransforms {
+layout(set = 0, binding = 0) writeonly buffer JointTransforms {
     mat4 joint_transforms[];
 };
 
-layout(set = 1, binding = 1) buffer LocalTransforms {
-    Similarity local_transforms[];
-};
-
-layout(set = 1, binding = 2) buffer GlobalTransforms {
-    Similarity global_transforms[];
-};
-
-layout(set = 1, binding = 3) uniform Uniform {
+layout(set = 0, binding = 1) uniform Uniform {
     uint num_nodes;
     uint num_joints;
 };
 
-layout(set = 1, binding = 4) readonly buffer DepthFirstNodes {
+layout(set = 0, binding = 2) readonly buffer LocalTransforms {
+    Similarity local_transforms[];
+};
+
+// todo: this is basically just used as storage within the shader. Can we remove?
+layout(set = 0, binding = 3) buffer GlobalTransforms {
+    Similarity global_transforms[];
+};
+
+layout(set = 0, binding = 4) readonly buffer DepthFirstNodes {
     NodeAndParent depth_first_nodes[];
 };
 
-layout(set = 1, binding = 5) readonly buffer JointIndicesToNodeIndices {
+layout(set = 0, binding = 5) readonly buffer JointIndicesToNodeIndices {
     uint joint_indices_to_node_indices[];
 };
 
-layout(set = 1, binding = 6) readonly buffer InverseBindMatrices {
+layout(set = 0, binding = 6) readonly buffer InverseBindMatrices {
     mat4 inverse_bind_matrices[];
 };
 
-// 1 each for translation/rotation/scale
-
-layout(set = 2, binding = 0) readonly buffer ScaleInputs {
-    float scale_inputs[];
-};
-
-layout(set = 2, binding = 1) readonly buffer ScaleOutputs {
-    float scale_outputs[];
-};
-
-layout(set = 2, binding = 2) readonly buffer ScaleChannels {
-    Channel scale_channels[];
-};
-
-const float INVALID = -0.124;
-
-#define CHANNEL_INPUTS scale_inputs
-#define CHANNEL_OUTPUTS scale_outputs
-#define SAMPLE_TYPE float
-#define INVALID INVALID
-#include "includes/animation.glsl"
-
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-
-// todo: split up into a channel interpolation part and a joint transform calculation part.
 
 void main() {
     uint index = gl_GlobalInvocationID.x;
@@ -83,18 +54,8 @@ void main() {
     uint transforms_offset = index * num_nodes;
     uint joints_offset = index * num_joints;
 
-    if (transforms_offset >= local_transforms.length()) {
+    if (transforms_offset >= global_transforms.length()) {
         return;
-    }
-
-    float t = fract(time.time_since_start);
-
-    for (uint i = 0; i < scale_channels.length(); i++) {
-        Channel channel = scale_channels[i];
-        float scale = sample_cubic_spline_float(t, channel);
-        if (scale != INVALID) {
-            local_transforms[transforms_offset + channel.node_index].scale = scale;
-        }
     }
 
     for (uint i = 0; i < depth_first_nodes.length(); i++) {
