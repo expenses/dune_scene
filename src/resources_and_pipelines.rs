@@ -540,6 +540,7 @@ impl Pipelines {
                             &resources.main_bgl,
                             &resources.land_craft_bgl,
                             &resources.particles_bgl,
+                            &resources.particles_bgl,
                         ],
                         push_constant_ranges: &[],
                     });

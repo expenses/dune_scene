@@ -131,6 +131,7 @@ pub struct ParticlesBufferInfo {
     pub _offset: u32,
     pub _particle_duration: f32,
     pub half_size_linear: f32,
+    pub _last_particle_spawn_time: f32,
 }
 
 #[repr(C)]

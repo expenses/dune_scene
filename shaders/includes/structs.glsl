@@ -49,6 +49,7 @@ struct ParticlesBufferInfo {
     uint offset;
     float particle_duration;
     float half_size_linear;
+    float last_particle_spawn_time;
 };
 
 struct Particle {

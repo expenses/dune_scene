@@ -162,14 +162,25 @@ async fn run() -> anyhow::Result<()> {
         contents: bytemuck::cast_slice(&land_craft),
     });
 
-    let particles_per_landcraft = 45;
-    let num_smoke_particles = num_ships * particles_per_landcraft;
+    let smoke_particles_per_landcraft = 45;
+    let num_smoke_particles = num_land_craft * smoke_particles_per_landcraft;
     let smoke_particles_bind_group = create_particle_bind_group(
         &device,
         "smoke particles",
         num_smoke_particles as u64,
         Vec3::broadcast(0.15),
         0.03,
+        &resources,
+    );
+
+    let sand_particles_per_landcraft = 10;
+    let num_sand_particles = num_land_craft * sand_particles_per_landcraft;
+    let sand_particles_bind_group = create_particle_bind_group(
+        &device,
+        "sand particles",
+        num_sand_particles as u64,
+        settings.base_colour * 0.4,
+        0.1,
         &resources,
     );
 
@@ -510,11 +521,15 @@ async fn run() -> anyhow::Result<()> {
                     compute_pass.set_bind_group(1, &smoke_particles_bind_group, &[]);
                     compute_pass.dispatch(dispatch_count(num_smoke_particles, 64), 1, 1);
 
+                    compute_pass.set_bind_group(1, &sand_particles_bind_group, &[]);
+                    compute_pass.dispatch(dispatch_count(num_sand_particles, 64), 1, 1);
+
                     if move_vehicles {
                         compute_pass.set_pipeline(&pipelines.land_craft_movement_pipeline);
                         compute_pass.set_bind_group(0, &bind_group, &[]);
                         compute_pass.set_bind_group(1, &land_craft_bind_group, &[]);
                         compute_pass.set_bind_group(2, &smoke_particles_bind_group, &[]);
+                        compute_pass.set_bind_group(3, &sand_particles_bind_group, &[]);
                         compute_pass.dispatch(dispatch_count(num_land_craft, 64), 1, 1);
 
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
@@ -627,6 +642,9 @@ async fn run() -> anyhow::Result<()> {
 
                     render_pass.set_pipeline(&pipelines.particles_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);
+
+                    render_pass.set_bind_group(1, &sand_particles_bind_group, &[]);
+                    render_pass.draw(0..num_sand_particles * 6, 0..1);
 
                     render_pass.set_bind_group(1, &smoke_particles_bind_group, &[]);
                     render_pass.draw(0..num_smoke_particles * 6, 0..1);
