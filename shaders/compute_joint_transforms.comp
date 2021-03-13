@@ -6,13 +6,15 @@
 
 mat4 similarity_to_mat4(Similarity sim) {
     mat4 scale_matrix = scale_matrix(sim.scale);
+    mat4 translation_matrix = translation_matrix(sim.translation);
 
-    return scale_matrix;
+    return translation_matrix * scale_matrix;
 }
 
 Similarity similarity_mul(Similarity a, Similarity b) {
     Similarity c;
     c.scale = a.scale * b.scale;
+    c.translation = a.translation + b.translation;
     return c;
 }
 
@@ -20,24 +22,29 @@ layout(set = 0, binding = 0) writeonly buffer JointTransforms {
     mat4 joint_transforms[];
 };
 
-layout(set = 0, binding = 1) readonly buffer LocalTransforms {
+layout(set = 0, binding = 1) uniform AnimationInfo {
+    uint num_joints;
+    uint num_nodes;
+};
+
+layout(set = 0, binding = 2) readonly buffer LocalTransforms {
     Similarity local_transforms[];
 };
 
 // todo: this is basically just used as storage within the shader. Can we remove?
-layout(set = 0, binding = 2) buffer GlobalTransforms {
+layout(set = 0, binding = 3) buffer GlobalTransforms {
     Similarity global_transforms[];
 };
 
-layout(set = 0, binding = 3) readonly buffer DepthFirstNodes {
+layout(set = 0, binding = 4) readonly buffer DepthFirstNodes {
     NodeAndParent depth_first_nodes[];
 };
 
-layout(set = 0, binding = 4) readonly buffer JointIndicesToNodeIndices {
+layout(set = 0, binding = 5) readonly buffer JointIndicesToNodeIndices {
     uint joint_indices_to_node_indices[];
 };
 
-layout(set = 0, binding = 5) readonly buffer InverseBindMatrices {
+layout(set = 0, binding = 6) readonly buffer InverseBindMatrices {
     mat4 inverse_bind_matrices[];
 };
 
@@ -46,9 +53,6 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint index = gl_GlobalInvocationID.x;
 
-    uint num_nodes = depth_first_nodes.length();
-    uint num_joints = joint_indices_to_node_indices.length();
-
     uint transforms_offset = index * num_nodes;
     uint joints_offset = index * num_joints;
 
@@ -56,7 +60,7 @@ void main() {
         return;
     }
 
-    for (uint i = 0; i < depth_first_nodes.length(); i++) {
+    for (uint i = 0; i < num_nodes; i++) {
         NodeAndParent indices = depth_first_nodes[i];
 
         uint node_index = transforms_offset + indices.node_index;
@@ -70,7 +74,7 @@ void main() {
         }
     }
 
-    for (uint joint_index = 0; joint_index < joint_indices_to_node_indices.length(); joint_index++) {
+    for (uint joint_index = 0; joint_index < num_joints; joint_index++) {
         uint node_index = joint_indices_to_node_indices[joint_index];
         mat4 inverse_bind_matrix = inverse_bind_matrices[joint_index];
         mat4 global_transform = similarity_to_mat4(global_transforms[node_index]);

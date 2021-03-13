@@ -163,6 +163,7 @@ pub struct LandCraft {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Similarity {
+    pub translation: Vec3,
     pub scale: f32,
 }
 
@@ -182,4 +183,11 @@ pub struct AnimatedVertex {
     pub tangent: Vec4,
     pub joint_indices: [u16; 4],
     pub joint_weights: Vec4,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct AnimationInfo {
+    pub num_joints: u32,
+    pub num_nodes: u32,
 }

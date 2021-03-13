@@ -686,8 +686,6 @@ impl Explosion {
                 .collect()
         };
 
-        println!("{:?}", inverse_bind_matrices);
-
         Ok(Self {
             vertices,
             indices,

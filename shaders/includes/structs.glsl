@@ -77,6 +77,7 @@ struct Channel {
 };
 
 struct Similarity {
+    vec3 translation;
     float scale;
 };
 

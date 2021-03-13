@@ -64,3 +64,12 @@ mat4 scale_matrix(float scale) {
         vec4(0.0, 0.0, 0.0, 1.0)
     );
 }
+
+mat4 translation_matrix(vec3 translation) {
+    return mat4(
+        vec4(1.0, 0.0, 0.0, 0.0),
+        vec4(0.0, 1.0, 0.0, 0.0),
+        vec4(0.0, 0.0, 1.0, 0.0),
+        vec4(translation, 1.0)
+    );
+}

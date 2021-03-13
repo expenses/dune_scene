@@ -200,8 +200,10 @@ async fn run() -> anyhow::Result<()> {
     let land_craft_bytes = include_bytes!("../models/landcraft.glb");
     let land_craft = model_loading::LandCraft::load(land_craft_bytes, &device, &queue, &resources)?;
 
-    let explosion_bytes = include_bytes!("../models/explosion.glb");
+    let explosion_bytes = include_bytes!("../models/pump.glb");
     let explosion = model_loading::Explosion::load(explosion_bytes, &device, &queue, &resources)?;
+
+    println!("{:?}", explosion.animation);
 
     // Now we can create a window.
 
@@ -396,21 +398,25 @@ async fn run() -> anyhow::Result<()> {
         })
         .collect();
 
-    let joint_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("animation joints"),
-        usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
-        size: 10 * std::mem::size_of::<Mat4>() as u64,
-        mapped_at_creation: false,
-    });
-
-    let animation_bgl = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("animation bind group"),
-        layout: &resources.animation_bgl,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: joint_buffer.as_entire_binding(),
-        }],
-    });
+    let (local_transforms_buffer, animation_bind_group) = create_animation_bind_group(
+        &device,
+        &resources,
+        10,
+        &explosion
+            .depth_first_nodes
+            .iter()
+            .map(|(node_index, parent_index)| primitives::NodeAndParent {
+                node_index: *node_index as u32,
+                parent_index: parent_index.map(|p| p as i32).unwrap_or(-1),
+            })
+            .collect::<Vec<_>>(),
+        &explosion
+            .joint_indices_to_node_indices
+            .iter()
+            .map(|index| *index as u32)
+            .collect::<Vec<_>>(),
+        &explosion.inverse_bind_matrices,
+    );
 
     let position_instances: Vec<_> = (0..10)
         .map(|_| {
@@ -549,7 +555,7 @@ async fn run() -> anyhow::Result<()> {
                         }),
                     );
 
-                    let mut joint_transforms = Vec::new();
+                    let mut local_transforms = Vec::new();
 
                     for (explosion_joints, animation_time) in &mut explosion_joints_vec {
                         *animation_time =
@@ -560,15 +566,19 @@ async fn run() -> anyhow::Result<()> {
                             &explosion.depth_first_nodes,
                         );
 
-                        for mat in explosion_joints.iter(
-                            &explosion.joint_indices_to_node_indices,
-                            &explosion.inverse_bind_matrices[..],
-                        ) {
-                            joint_transforms.push(mat);
+                        for l in &explosion_joints.local_transforms {
+                            local_transforms.push(primitives::Similarity {
+                                scale: l.scale,
+                                translation: l.translation,
+                            });
                         }
                     }
 
-                    queue.write_buffer(&joint_buffer, 0, bytemuck::cast_slice(&joint_transforms));
+                    queue.write_buffer(
+                        &local_transforms_buffer,
+                        0,
+                        bytemuck::cast_slice(&local_transforms),
+                    );
 
                     let mut encoder =
                         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -579,6 +589,10 @@ async fn run() -> anyhow::Result<()> {
                         encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                             label: Some("compute pass"),
                         });
+
+                    compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
+                    compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                    compute_pass.dispatch(dispatch_count(10, 64), 1, 1);
 
                     compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
                     compute_pass.set_bind_group(0, &bind_group, &[]);
@@ -679,7 +693,7 @@ async fn run() -> anyhow::Result<()> {
                     render_pass.set_pipeline(&pipelines.explosions_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);
                     render_pass.set_bind_group(1, &explosion.texture_bind_group, &[]);
-                    render_pass.set_bind_group(2, &animation_bgl, &[]);
+                    render_pass.set_bind_group(2, &animation_bind_group, &[]);
                     render_pass.set_vertex_buffer(0, explosion.vertices.slice(..));
                     render_pass.set_vertex_buffer(1, position_instances_buffer.slice(..));
                     render_pass.set_index_buffer(explosion.indices.slice(..), INDEX_FORMAT);
@@ -1145,16 +1159,27 @@ fn create_animation_bind_group(
     joint_indices_to_node_indices: &[u32],
     inverse_bind_matrices: &[Mat4],
 ) -> (wgpu::Buffer, wgpu::BindGroup) {
+    println!("{:?}", joint_indices_to_node_indices);
+
     let num_joints = joint_indices_to_node_indices.len();
     let num_nodes = depth_first_nodes.len();
 
     debug_assert_eq!(inverse_bind_matrices.len(), num_joints);
 
-    let joint_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+    let joints = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("animation joints"),
         usage: wgpu::BufferUsage::STORAGE,
         size: (num_joints * num_instances * std::mem::size_of::<Mat4>()) as u64,
         mapped_at_creation: false,
+    });
+
+    let info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("animation info"),
+        usage: wgpu::BufferUsage::UNIFORM,
+        contents: bytemuck::bytes_of(&primitives::AnimationInfo {
+            num_joints: num_joints as u32,
+            num_nodes: num_nodes as u32,
+        }),
     });
 
     let local_transforms = device.create_buffer(&wgpu::BufferDescriptor {
@@ -1197,26 +1222,30 @@ fn create_animation_bind_group(
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
-                resource: joint_buffer.as_entire_binding(),
+                resource: joints.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 1,
-                resource: local_transforms.as_entire_binding(),
+                resource: info.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 2,
-                resource: global_transforms.as_entire_binding(),
+                resource: local_transforms.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 3,
-                resource: depth_first_nodes.as_entire_binding(),
+                resource: global_transforms.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 4,
-                resource: joint_indices_to_node_indices.as_entire_binding(),
+                resource: depth_first_nodes.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 5,
+                resource: joint_indices_to_node_indices.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 6,
                 resource: inverse_bind_matrices.as_entire_binding(),
             },
         ],

@@ -6,13 +6,15 @@
 
 mat4 similarity_to_mat4(Similarity sim) {
     mat4 scale_matrix = scale_matrix(sim.scale);
+    mat4 translation_matrix = translation_matrix(sim.translation);
 
-    return scale_matrix;
+    return translation_matrix * scale_matrix;
 }
 
 Similarity similarity_mul(Similarity a, Similarity b) {
     Similarity c;
     c.scale = a.scale * b.scale;
+    c.translation = a.translation + b.translation;
     return c;
 }
 

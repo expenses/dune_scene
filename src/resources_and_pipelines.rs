@@ -132,11 +132,12 @@ impl RenderResources {
                         wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
                         false,
                     ),
-                    //storage(1, wgpu::ShaderStage::COMPUTE, false),
-                    //storage(2, wgpu::ShaderStage::COMPUTE, false),
-                    //storage(3, wgpu::ShaderStage::COMPUTE, true),
-                    //storage(4, wgpu::ShaderStage::COMPUTE, true),
-                    //storage(5, wgpu::ShaderStage::COMPUTE, true),
+                    uniform(1, wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX),
+                    storage(2, wgpu::ShaderStage::COMPUTE, false),
+                    storage(3, wgpu::ShaderStage::COMPUTE, false),
+                    storage(4, wgpu::ShaderStage::COMPUTE, true),
+                    storage(5, wgpu::ShaderStage::COMPUTE, true),
+                    storage(6, wgpu::ShaderStage::COMPUTE, true),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
@@ -164,6 +165,7 @@ pub struct Pipelines {
     pub ship_movement_pipeline: wgpu::ComputePipeline,
     pub particles_movement_pipeline: wgpu::ComputePipeline,
     pub land_craft_movement_pipeline: wgpu::ComputePipeline,
+    pub compute_joint_transforms_pipeline: wgpu::ComputePipeline,
     pub bake_height_map_pipeline: wgpu::RenderPipeline,
     pub explosions_pipeline: wgpu::RenderPipeline,
 }
@@ -582,6 +584,26 @@ impl Pipelines {
                     label: Some("land craft movement pipeline"),
                     layout: Some(&land_craft_movement_pipeline_layout),
                     module: &cs_land_craft_movement,
+                    entry_point: "main",
+                })
+            },
+            compute_joint_transforms_pipeline: {
+                let compute_joint_transforms_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("compute joint transforms pipeline layout"),
+                        bind_group_layouts: &[&resources.animation_bgl],
+                        push_constant_ranges: &[],
+                    });
+
+                let cs_compute_joint_transforms =
+                    wgpu::include_spirv!("../shaders/compiled/compute_joint_transforms.comp.spv");
+                let cs_compute_joint_transforms =
+                    device.create_shader_module(&cs_compute_joint_transforms);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("create joint transforms pipeline"),
+                    layout: Some(&compute_joint_transforms_pipeline_layout),
+                    module: &cs_compute_joint_transforms,
                     entry_point: "main",
                 })
             },
