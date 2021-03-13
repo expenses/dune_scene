@@ -1,0 +1,128 @@
+#version 450
+
+#include "../includes/structs.glsl"
+#include "../includes/utils.glsl"
+#include "../includes/matrices.glsl"
+
+layout(set = 0, binding = 4) uniform TimeBuffer {
+    Time time;
+};
+
+layout(set = 0, binding = 2) uniform sampler u_sampler;
+
+layout(set = 1, binding = 0) buffer LandCraftBuffer {
+    LandCraft crafts[];
+};
+
+layout(set = 1, binding = 1) uniform texture2D height_map;
+
+layout(set = 2, binding = 0) writeonly buffer SmokeParticlesBuffer {
+    Particle smoke_particles[];
+};
+
+layout(set = 2, binding = 1) buffer SmokeParticlesInfo {
+    ParticlesBufferInfo smoke_particles_info;
+};
+
+layout(set = 3, binding = 0) writeonly buffer SandParticlesBuffer {
+    Particle sand_particles[];
+};
+
+layout(set = 3, binding = 1) buffer SandParticlesInfo {
+    ParticlesBufferInfo sand_particles_info;
+};
+
+
+const float SCENE_SIZE = 4.0;
+
+float sample_height(vec2 pos) {
+    vec2 uv = pos / SCENE_SIZE + 0.5;
+    return textureLod(sampler2D(height_map, u_sampler), uv, 0).r;
+}
+
+// We do things this way to avoid atan/atan2 which are slow and maybe branchy.
+vec2 calculate_sine_and_cosine(float opposite, float adjacent) {
+    vec2 lengths = vec2(opposite, adjacent);
+    float rcp_hypotenuse = inversesqrt(dot(lengths, lengths));
+    // sohcahtoa!
+    return lengths * rcp_hypotenuse;
+}
+
+const vec3 SMOKE_STACK_OFFSET = vec3(-0.5, 3.0, 0.0) * 0.02;
+const float SAND_PARTICLE_SPAWN_COOLDOWN = 0.1;
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+
+    if (index >= crafts.length()) {
+        return;
+    }
+
+    LandCraft craft = crafts[index];
+
+    vec2 velocity = vec2(cos(craft.facing), sin(craft.facing)) * (0.15 * time.delta_time);
+    craft.position.xz += velocity;
+    craft.position.xz = repeat_over_bounds(craft.position.xz, 2.0);
+
+    float height = sample_height(craft.position.xz);
+    craft.position.y = height;
+
+    // Calculate the angle of the craft.
+
+    const float COMPARE_DIST = 0.02;
+
+    mat2 rotation_2d = rotation_matrix(craft.facing);
+
+    vec2 forwards_pos = craft.position.xz + rotation_2d * vec2(COMPARE_DIST, 0.0);
+    float forwards_height = sample_height(forwards_pos);
+
+    mat3 z_rotation = rotation_matrix_z(calculate_sine_and_cosine(height - forwards_height, COMPARE_DIST));
+
+    vec2 left_pos = craft.position.xz + rotation_2d * vec2(0.0, -COMPARE_DIST);
+    float left_height = sample_height(left_pos);
+
+    mat3 x_rotation = rotation_matrix_x(calculate_sine_and_cosine(height - left_height, COMPARE_DIST));
+
+    craft.rotation_matrix = rotation_matrix_y(craft.facing) * x_rotation * z_rotation;
+
+    crafts[index] = craft;
+
+    uint smoke_particle_index = (smoke_particles_info.offset + index) % smoke_particles.length();
+
+    vec3 particle_spawn_position = craft.position + craft.rotation_matrix * SMOKE_STACK_OFFSET;
+    vec3 particle_spawn_normal = craft.rotation_matrix * vec3(0.0, 1.0, 0.0);
+
+    Particle particle;
+    particle.position = particle_spawn_position;
+    particle.time_alive_percentage = 0.0;
+    particle.velocity = particle_spawn_normal * 0.1 + randomish_unit_vector(particle_spawn_position) * 0.01;
+
+    smoke_particles[smoke_particle_index] = particle;
+
+    if (time.time_since_start - sand_particles_info.last_particle_spawn_time > SAND_PARTICLE_SPAWN_COOLDOWN) {
+        uint sand_particle_index = (sand_particles_info.offset + index) % sand_particles.length();
+
+        Particle sand_particle;
+        sand_particle.position = craft.position;
+        sand_particle.velocity = vec3(0.0);
+        sand_particle.time_alive_percentage = 0.0;
+
+        sand_particles[sand_particle_index] = sand_particle;
+
+        if (index == 0) {
+            sand_particles_info.offset += crafts.length();
+
+            sand_particles_info.last_particle_spawn_time = time.time_since_start;
+        }
+    }
+
+    // This info should only be updated once per invocation.
+    if (index == 0) {
+        smoke_particles_info.offset += crafts.length();
+        // Just in case the number of crafts / particles has changed.
+        smoke_particles_info.particle_duration = (smoke_particles.length() / crafts.length()) / 60.0;
+        sand_particles_info.particle_duration = (sand_particles.length() / crafts.length()) / 60.0 * (60.0 * SAND_PARTICLE_SPAWN_COOLDOWN);
+    }
+}

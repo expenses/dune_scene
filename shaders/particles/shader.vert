@@ -1,6 +1,6 @@
 #version 450
 
-#include "includes/structs.glsl"
+#include "../includes/structs.glsl"
 
 layout(set = 0, binding = 0) uniform CameraUniform {
     Camera camera;
@@ -12,6 +12,10 @@ layout(set = 0, binding = 4) uniform TimeBuffer {
 
 layout(set = 1, binding = 0) readonly buffer ParticlesBuffer {
     Particle particles[];
+};
+
+layout(set = 1, binding = 1) readonly buffer ParticlesInfo {
+    ParticlesBufferInfo particles_info;
 };
 
 layout(location = 0) out vec4 out_colour;
@@ -34,9 +38,9 @@ void main() {
 
     float alpha = time_remaining * time_remaining;
 
-    out_colour = vec4(vec3(0.5, 0.75, 1.0), alpha);
+    out_colour = vec4(particles_info.colour, alpha);
 
-    float half_size = 0.02 * particle.time_alive_percentage;
+    float half_size = particles_info.half_size_linear * particle.time_alive_percentage;
 
     vec2 coord = COORDS[gl_VertexIndex % 6];
 

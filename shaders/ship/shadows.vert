@@ -1,6 +1,6 @@
 #version 450
 
-#include "includes/structs.glsl"
+#include "../includes/structs.glsl"
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -18,9 +18,9 @@ layout(set = 1, binding = 0) readonly buffer ShipTransforms {
 void main() {
     Ship ship_transform = ship_transforms[gl_InstanceIndex];
 
-    mat3 rotation_matrix = ship_transform.y_rotation_matrix;
+    mat3 rotation = ship_transform.y_rotation_matrix;
 
-    vec3 transformed_pos = rotation_matrix * position + ship_transform.position;
+    vec3 transformed_pos = ship_transform.position + rotation * position;
 
     gl_Position = projection_view * vec4(transformed_pos, 1.0);
 }

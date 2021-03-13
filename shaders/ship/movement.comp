@@ -1,8 +1,8 @@
 #version 450
 
-#include "includes/structs.glsl"
-#include "includes/utils.glsl"
-#include "includes/matrices.glsl"
+#include "../includes/structs.glsl"
+#include "../includes/utils.glsl"
+#include "../includes/matrices.glsl"
 
 layout(set = 0, binding = 3) uniform SettingsUniform {
     Settings settings;
@@ -36,14 +36,6 @@ const vec3 LEFT_ENGINE_OFFSET = vec3(
 );
 
 const uint PARTICLES_PER_SHIP = 2;
-
-vec3 randomish_unit_vector(vec3 seed) {
-    return normalize(vec3(
-        random(seed.xy) - 0.5,
-        random(seed.yz) - 0.5,
-        random(seed.zx) - 0.5
-    ));
-}
 
 void spawn_particle(uint index, vec3 position) {
     Particle particle;

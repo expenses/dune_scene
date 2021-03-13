@@ -1,6 +1,6 @@
 #version 450
 
-#include "includes/structs.glsl"
+#include "../includes/structs.glsl"
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -17,18 +17,18 @@ layout(set = 0, binding = 0) uniform CameraUniform {
     Camera camera;
 };
 
-layout(set = 1, binding = 0) readonly buffer ShipTransforms {
-    Ship ship_transforms[];
+layout(set = 1, binding = 0) readonly buffer LandCraftBuffer {
+    LandCraft crafts[];
 };
 
 void main() {
-    Ship ship_transform = ship_transforms[gl_InstanceIndex];
+    LandCraft craft = crafts[gl_InstanceIndex];
 
-    mat3 rotation_matrix = ship_transform.y_rotation_matrix;
+    mat3 rotation = craft.rotation_matrix;
 
-    vec3 transformed_pos = rotation_matrix * position + ship_transform.position;
+    vec3 transformed_pos = craft.position + rotation * position;
 
-    out_normal = rotation_matrix * normal;
+    out_normal = rotation * normal;
     out_uv = uv;
     out_camera_dir = camera.position - transformed_pos;
     out_pos = transformed_pos;

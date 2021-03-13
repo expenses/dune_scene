@@ -1,8 +1,8 @@
 #version 450
 
-#include "includes/brdf.glsl"
-#include "includes/utils.glsl"
-#include "includes/structs.glsl"
+#include "../includes/brdf.glsl"
+#include "../includes/utils.glsl"
+#include "../includes/structs.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec2 in_uv;
@@ -20,6 +20,10 @@ layout(set = 0, binding = 3) uniform SettingsUniform {
     Settings settings;
 };
 
+layout(set = 0, binding = 4) uniform TimeBuffer {
+    Time time;
+};
+
 layout(set = 2, binding = 0) uniform texture2D u_texture;
 
 layout(set = 3, binding = 0) uniform texture2DArray shadow_texture_array;
@@ -32,9 +36,12 @@ layout(set = 3, binding = 2) uniform CascadedShadowMapUniform {
 
 #define SHADOW_SAMPLER shadow_sampler
 #define SHADOW_TEXTURE_ARRAY shadow_texture_array
-#include "includes/shadows.glsl"
+#include "../includes/shadows.glsl"
 
 layout(location = 0) out vec4 out_colour;
+
+// All UVs below this are part of the treads and should be rotated.
+const float UV_ROTATION_THRESHOLD = 1.0 - 0.186;
 
 void main() {
     vec3 normal = normalize(in_normal);
@@ -42,7 +49,10 @@ void main() {
     vec3 camera_dir = normalize(in_camera_dir);
     vec3 halfway_dir = normalize(sun.facing + camera_dir);
 
-    vec3 texture_colour = texture(sampler2D(u_texture, u_sampler), in_uv).rgb;
+    vec2 uv = in_uv;
+    uv.x = fract(uv.x - float(uv.y > UV_ROTATION_THRESHOLD) * time.time_since_start);
+
+    vec3 texture_colour = texture(sampler2D(u_texture, u_sampler), uv).rgb;
 
     vec3 f0 = vec3(0.04);
     vec3 f90 = compute_f90(f0);
@@ -56,7 +66,6 @@ void main() {
 
     vec3 diffuse = lighting_factor *
         BRDF_lambertian(f0, f90, texture_colour, VdotH);
-
 
     float shadow = calculate_shadow(in_view_pos.z, csm.matrices, csm.split_depths, in_pos);
 
