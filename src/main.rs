@@ -200,10 +200,8 @@ async fn run() -> anyhow::Result<()> {
     let land_craft_bytes = include_bytes!("../models/landcraft.glb");
     let land_craft = model_loading::LandCraft::load(land_craft_bytes, &device, &queue, &resources)?;
 
-    let explosion_bytes = include_bytes!("../models/explosion.glb");
+    let explosion_bytes = include_bytes!("../models/mouse.glb");
     let explosion = model_loading::Explosion::load(explosion_bytes, &device, &queue, &resources)?;
-
-    println!("{:?}", explosion.animation);
 
     // Now we can create a window.
 
@@ -389,7 +387,9 @@ async fn run() -> anyhow::Result<()> {
         ],
     });
 
-    let mut explosion_joints_vec: Vec<_> = (0..10)
+    let num_explosions = 50;
+
+    let mut explosion_joints_vec: Vec<_> = (0..num_explosions)
         .map(|_| {
             (
                 explosion.animation_joints.clone(),
@@ -401,7 +401,7 @@ async fn run() -> anyhow::Result<()> {
     let (local_transforms_buffer, animation_bind_group) = create_animation_bind_group(
         &device,
         &resources,
-        10,
+        num_explosions as usize,
         &explosion
             .depth_first_nodes
             .iter()
@@ -424,7 +424,7 @@ async fn run() -> anyhow::Result<()> {
             .collect::<Vec<_>>(),
     );
 
-    let position_instances: Vec<_> = (0..10)
+    let position_instances: Vec<_> = (0..num_explosions)
         .map(|_| {
             Vec3::new(
                 rng.gen_range(-2.0..=2.0),
@@ -606,7 +606,7 @@ async fn run() -> anyhow::Result<()> {
 
                     compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
                     compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                    compute_pass.dispatch(dispatch_count(10, 64), 1, 1);
+                    compute_pass.dispatch(dispatch_count(num_explosions, 64), 1, 1);
 
                     compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
                     compute_pass.set_bind_group(0, &bind_group, &[]);
@@ -711,7 +711,7 @@ async fn run() -> anyhow::Result<()> {
                     render_pass.set_vertex_buffer(0, explosion.vertices.slice(..));
                     render_pass.set_vertex_buffer(1, position_instances_buffer.slice(..));
                     render_pass.set_index_buffer(explosion.indices.slice(..), INDEX_FORMAT);
-                    render_pass.draw_indexed(0..explosion.num_indices, 0, 0..10);
+                    render_pass.draw_indexed(0..explosion.num_indices, 0, 0..num_explosions);
 
                     if render_ships {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);
@@ -1174,10 +1174,10 @@ fn create_animation_bind_group(
     inverse_bind_matrices: &[Mat4],
     global_transforms: &[Mat4],
 ) -> (wgpu::Buffer, wgpu::BindGroup) {
-    println!("{:?}", joint_indices_to_node_indices);
-
     let num_joints = joint_indices_to_node_indices.len();
     let num_nodes = depth_first_nodes.len();
+
+    println!("{}/{}", num_joints, num_nodes);
 
     debug_assert_eq!(inverse_bind_matrices.len(), num_joints);
     debug_assert_eq!(global_transforms.len(), num_nodes);

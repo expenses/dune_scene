@@ -62,7 +62,7 @@ void main() {
 
         if (indices.parent_index != -1) {
             mat4 parent_transform = global_transforms[nodes_offset + indices.parent_index];
-            global_transforms[node_index] = local_transform * parent_transform;
+            global_transforms[node_index] = parent_transform * local_transform;
         } else {
             global_transforms[node_index] = local_transform;
         }

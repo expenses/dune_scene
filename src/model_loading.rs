@@ -658,7 +658,6 @@ impl Explosion {
         let mut animations =
             animation::read_animations(gltf.animations(), &buffer_blob, "explosion");
 
-        assert_eq!(animations.len(), 1);
         let animation = animations.remove(0);
 
         let depth_first_nodes: Vec<_> = node_tree.iter_depth_first().collect();
