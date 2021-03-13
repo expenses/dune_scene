@@ -36,3 +36,11 @@ vec2 repeat_over_bounds(vec2 position, float bounds) {
     vec2 offset = vec2(is_over_bounds) * sign(position) * (bounds * 2.0);
     return position - offset;
 }
+
+vec3 randomish_unit_vector(vec3 seed) {
+    return normalize(vec3(
+        random(seed.xy) - 0.5,
+        random(seed.yz) - 0.5,
+        random(seed.zx) - 0.5
+    ));
+}

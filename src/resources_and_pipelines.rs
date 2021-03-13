@@ -536,7 +536,11 @@ impl Pipelines {
                 let land_craft_movement_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("land craft movement pipeline layout"),
-                        bind_group_layouts: &[&resources.main_bgl, &resources.land_craft_bgl],
+                        bind_group_layouts: &[
+                            &resources.main_bgl,
+                            &resources.land_craft_bgl,
+                            &resources.particles_bgl,
+                        ],
                         push_constant_ranges: &[],
                     });
 

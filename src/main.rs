@@ -137,39 +137,15 @@ async fn run() -> anyhow::Result<()> {
     });
 
     let particles_per_ship = 15 * 2;
-    let num_particles = num_ships * particles_per_ship;
-
-    let particles_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("particles buffer"),
-        usage: wgpu::BufferUsage::STORAGE,
-        size: std::mem::size_of::<primitives::Particle>() as u64 * num_particles as u64,
-        mapped_at_creation: false,
-    });
-
-    let particles_buffer_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("particles info buffer"),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::bytes_of(&primitives::ParticlesBufferInfo {
-            colour: Vec3::new(0.5, 0.75, 1.0),
-            half_size_linear: 0.02,
-            ..Default::default()
-        }),
-    });
-
-    let particles_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("particles bind group"),
-        layout: &resources.particles_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: particles_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: particles_buffer_info.as_entire_binding(),
-            },
-        ],
-    });
+    let num_exhaust_particles = num_ships * particles_per_ship;
+    let exhaust_particles_bind_group = create_particle_bind_group(
+        &device,
+        "exhaust particles",
+        num_exhaust_particles as u64,
+        Vec3::new(0.5, 0.75, 1.0),
+        0.02,
+        &resources,
+    );
 
     let num_land_craft = 200;
     let land_craft: Vec<_> = (0..num_land_craft)
@@ -185,6 +161,17 @@ async fn run() -> anyhow::Result<()> {
         usage: wgpu::BufferUsage::STORAGE,
         contents: bytemuck::cast_slice(&land_craft),
     });
+
+    let particles_per_landcraft = 45;
+    let num_smoke_particles = num_ships * particles_per_landcraft;
+    let smoke_particles_bind_group = create_particle_bind_group(
+        &device,
+        "smoke particles",
+        num_smoke_particles as u64,
+        Vec3::broadcast(0.15),
+        0.03,
+        &resources,
+    );
 
     let scene_bytes = include_bytes!("../models/dune.glb");
     let mut scene = Scene::load(scene_bytes, &device, &queue, &resources)?;
@@ -384,8 +371,7 @@ async fn run() -> anyhow::Result<()> {
     });
 
     let mut render_sun_dir = false;
-    let mut move_ships = true;
-    let mut move_land_craft = true;
+    let mut move_vehicles = true;
     let mut render_ships = true;
     let mut render_ship_shadows = true;
 
@@ -494,7 +480,7 @@ async fn run() -> anyhow::Result<()> {
             Event::MainEventsCleared => window.request_redraw(),
             Event::RedrawRequested(_) => match swap_chain.get_current_frame() {
                 Ok(frame) => {
-                    let delta_time = if move_ships { 1.0 / 60.0 } else { 0.0 };
+                    let delta_time = if move_vehicles { 1.0 / 60.0 } else { 0.0 };
                     time_since_start += delta_time;
                     queue.write_buffer(
                         &time_buffer,
@@ -517,21 +503,24 @@ async fn run() -> anyhow::Result<()> {
 
                     compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
                     compute_pass.set_bind_group(0, &bind_group, &[]);
-                    compute_pass.set_bind_group(1, &particles_bind_group, &[]);
-                    compute_pass.dispatch(dispatch_count(num_particles, 64), 1, 1);
 
-                    if move_land_craft {
+                    compute_pass.set_bind_group(1, &exhaust_particles_bind_group, &[]);
+                    compute_pass.dispatch(dispatch_count(num_exhaust_particles, 64), 1, 1);
+
+                    compute_pass.set_bind_group(1, &smoke_particles_bind_group, &[]);
+                    compute_pass.dispatch(dispatch_count(num_smoke_particles, 64), 1, 1);
+
+                    if move_vehicles {
                         compute_pass.set_pipeline(&pipelines.land_craft_movement_pipeline);
                         compute_pass.set_bind_group(0, &bind_group, &[]);
                         compute_pass.set_bind_group(1, &land_craft_bind_group, &[]);
+                        compute_pass.set_bind_group(2, &smoke_particles_bind_group, &[]);
                         compute_pass.dispatch(dispatch_count(num_land_craft, 64), 1, 1);
-                    }
 
-                    if move_ships {
                         compute_pass.set_pipeline(&pipelines.ship_movement_pipeline);
                         compute_pass.set_bind_group(0, &bind_group, &[]);
                         compute_pass.set_bind_group(1, &ship_bind_group, &[]);
-                        compute_pass.set_bind_group(2, &particles_bind_group, &[]);
+                        compute_pass.set_bind_group(2, &exhaust_particles_bind_group, &[]);
                         compute_pass.dispatch(dispatch_count(num_ships, 64), 1, 1);
                     }
 
@@ -638,8 +627,12 @@ async fn run() -> anyhow::Result<()> {
 
                     render_pass.set_pipeline(&pipelines.particles_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);
-                    render_pass.set_bind_group(1, &particles_bind_group, &[]);
-                    render_pass.draw(0..num_particles * 6, 0..1);
+
+                    render_pass.set_bind_group(1, &smoke_particles_bind_group, &[]);
+                    render_pass.draw(0..num_smoke_particles * 6, 0..1);
+
+                    render_pass.set_bind_group(1, &exhaust_particles_bind_group, &[]);
+                    render_pass.draw(0..num_exhaust_particles * 6, 0..1);
 
                     drop(render_pass);
 
@@ -716,8 +709,7 @@ async fn run() -> anyhow::Result<()> {
                             &mut settings,
                             &mut tonemapper_params,
                             &mut render_sun_dir,
-                            &mut move_ships,
-                            &mut move_land_craft,
+                            &mut move_vehicles,
                             &mut render_ships,
                             &mut render_ship_shadows,
                             &mut cascade_split_lambda,
@@ -876,8 +868,7 @@ fn draw_ui(
     settings: &mut primitives::Settings,
     tonemapper_params: &mut TonemapperParams,
     render_sun_dir: &mut bool,
-    move_ships: &mut bool,
-    move_land_craft: &mut bool,
+    move_vehicles: &mut bool,
     render_ships: &mut bool,
     render_ship_shadows: &mut bool,
     cascade_split_lambda: &mut f32,
@@ -919,8 +910,7 @@ fn draw_ui(
     }
 
     ui.checkbox(imgui::im_str!("Render Sun Direction"), render_sun_dir);
-    ui.checkbox(imgui::im_str!("Move Ships"), move_ships);
-    ui.checkbox(imgui::im_str!("Move Land Craft"), move_land_craft);
+    ui.checkbox(imgui::im_str!("Move Vehicles"), move_vehicles);
     ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
     ui.checkbox(imgui::im_str!("Render Ship Shadows"), render_ship_shadows);
 
@@ -1009,4 +999,45 @@ fn update_camera_and_shadows(
         scene.sun_facing,
         &queue,
     );
+}
+
+fn create_particle_bind_group(
+    device: &wgpu::Device,
+    name: &str,
+    num: u64,
+    colour: Vec3,
+    half_size_linear: f32,
+    resources: &RenderResources,
+) -> wgpu::BindGroup {
+    let particles_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some(&format!("{} buffer", name)),
+        usage: wgpu::BufferUsage::STORAGE,
+        size: std::mem::size_of::<primitives::Particle>() as u64 * num,
+        mapped_at_creation: false,
+    });
+
+    let particles_buffer_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&format!("{} info buffer", name)),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::bytes_of(&primitives::ParticlesBufferInfo {
+            colour,
+            half_size_linear,
+            ..Default::default()
+        }),
+    });
+
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(&format!("{} bind group", name)),
+        layout: &resources.particles_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: particles_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: particles_buffer_info.as_entire_binding(),
+            },
+        ],
+    })
 }

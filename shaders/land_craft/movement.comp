@@ -16,6 +16,14 @@ layout(set = 1, binding = 0) buffer LandCraftBuffer {
 
 layout(set = 1, binding = 1) uniform texture2D height_map;
 
+layout(set = 2, binding = 0) writeonly buffer ParticlesBuffer {
+    Particle particles[];
+};
+
+layout(set = 2, binding = 1) buffer ParticlesInfo {
+    ParticlesBufferInfo particles_info;
+};
+
 const float SCENE_SIZE = 4.0;
 
 float sample_height(vec2 pos) {
@@ -30,6 +38,8 @@ vec2 calculate_sine_and_cosine(float opposite, float adjacent) {
     // sohcahtoa!
     return lengths * rcp_hypotenuse;
 }
+
+const vec3 SMOKE_STACK_OFFSET = vec3(-0.5, 3.0, 0.0) * 0.02;
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -68,4 +78,23 @@ void main() {
     craft.rotation_matrix = rotation_matrix_y(craft.facing) * x_rotation * z_rotation;
 
     crafts[index] = craft;
+
+    uint particle_index = (particles_info.offset + index) % particles.length();
+
+    vec3 particle_spawn_position = craft.position + craft.rotation_matrix * SMOKE_STACK_OFFSET;
+    vec3 particle_spawn_normal = craft.rotation_matrix * vec3(0.0, 1.0, 0.0);
+
+    Particle particle;
+    particle.position = particle_spawn_position;
+    particle.time_alive_percentage = 0.0;
+    particle.velocity = particle_spawn_normal * 0.1 + randomish_unit_vector(particle_spawn_position) * 0.01;
+
+    particles[particle_index] = particle;
+
+    // This info should only be updated once per invocation.
+    if (index == 0) {
+        particles_info.offset += crafts.length();
+        // Just in case the number of crafts / particles has changed.
+        particles_info.particle_duration = (particles.length() / crafts.length()) / 60.0;
+    }
 }
