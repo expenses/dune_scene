@@ -165,6 +165,7 @@ pub struct LandCraft {
 pub struct Similarity {
     pub translation: Vec3,
     pub scale: f32,
+    pub rotation: Rotor,
 }
 
 #[repr(C)]
@@ -190,4 +191,11 @@ pub struct AnimatedVertex {
 pub struct AnimationInfo {
     pub num_joints: u32,
     pub num_nodes: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Rotor {
+    pub bv: Vec3,
+    pub s: f32,
 }

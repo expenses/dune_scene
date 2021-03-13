@@ -76,9 +76,15 @@ struct Channel {
     uint node_index;
 };
 
+struct Rotor {
+    vec3 bv;
+    float s;
+};
+
 struct Similarity {
     vec3 translation;
     float scale;
+    Rotor rotation;
 };
 
 struct NodeAndParent {

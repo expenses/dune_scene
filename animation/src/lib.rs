@@ -116,7 +116,7 @@ pub fn read_animations(
 
 #[derive(Clone, Debug)]
 pub struct AnimationJoints {
-    global_transforms: Vec<Similarity3>,
+    pub global_transforms: Vec<Similarity3>,
     pub local_transforms: Vec<Similarity3>,
 }
 
