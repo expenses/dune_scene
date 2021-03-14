@@ -197,7 +197,9 @@ pub struct AnimationInfo {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Rotor {
-    pub bv: Vec3,
+    pub bv_xy: f32,
+    pub bv_xz: f32,
+    pub bv_yz: f32,
     pub s: f32,
 }
 

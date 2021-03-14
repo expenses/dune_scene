@@ -511,7 +511,7 @@ impl LandCraft {
         let image = load_image(&image, buffer_blob, device, queue)?;
 
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ship texture bind group"),
+            label: Some("landcraft texture bind group"),
             layout: &resources.single_texture_bgl,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -528,20 +528,20 @@ impl LandCraft {
     }
 }
 
-pub struct Explosion {
+pub struct AnimatedModel {
     pub vertices: wgpu::Buffer,
     pub indices: wgpu::Buffer,
     pub num_indices: u32,
     pub texture_bind_group: wgpu::BindGroup,
 
     pub animation: animation::Animation,
-    pub animation_joints: animation::AnimationJoints,
+    pub initial_local_transforms: Vec<ultraviolet::Similarity3>,
     pub joint_indices_to_node_indices: Vec<usize>,
     pub inverse_bind_matrices: Vec<Mat4>,
     pub depth_first_nodes: Vec<(usize, Option<usize>)>,
 }
 
-impl Explosion {
+impl AnimatedModel {
     pub fn load(
         bytes: &[u8],
         device: &wgpu::Device,
@@ -559,8 +559,6 @@ impl Explosion {
         if let Some(skin) = skin.as_ref() {
             assert!(skin.skeleton().is_none());
         }
-
-        println!("{:?}", skin.is_some());
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
@@ -647,7 +645,7 @@ impl Explosion {
         let image = load_image(&image, buffer_blob, device, queue)?;
 
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ship texture bind group"),
+            label: Some("animated model texture bind group"),
             layout: &resources.single_texture_bgl,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -656,13 +654,11 @@ impl Explosion {
         });
 
         let mut animations =
-            animation::read_animations(gltf.animations(), &buffer_blob, "explosion");
+            animation::read_animations(gltf.animations(), &buffer_blob, "animated model");
 
         let animation = animations.remove(0);
 
         let depth_first_nodes: Vec<_> = node_tree.iter_depth_first().collect();
-
-        let animation_joints = animation::AnimationJoints::new(gltf.nodes(), &depth_first_nodes);
 
         let joint_indices_to_node_indices = if let Some(skin) = skin.as_ref() {
             skin.joints().map(|node| node.index()).collect()
@@ -685,6 +681,8 @@ impl Explosion {
                 .collect()
         };
 
+        let initial_local_transforms = animation::initial_local_transforms_from_nodes(gltf.nodes());
+
         Ok(Self {
             vertices,
             indices,
@@ -692,7 +690,7 @@ impl Explosion {
             texture_bind_group,
             animation,
             depth_first_nodes,
-            animation_joints,
+            initial_local_transforms,
             joint_indices_to_node_indices,
             inverse_bind_matrices,
         })

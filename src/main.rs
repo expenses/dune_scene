@@ -203,8 +203,9 @@ async fn run() -> anyhow::Result<()> {
     let land_craft_bytes = include_bytes!("../models/landcraft.glb");
     let land_craft = model_loading::LandCraft::load(land_craft_bytes, &device, &queue, &resources)?;
 
-    let explosion_bytes = include_bytes!("../models/mouse.glb");
-    let explosion = model_loading::Explosion::load(explosion_bytes, &device, &queue, &resources)?;
+    let explosion_bytes = include_bytes!("../models/explosion.glb");
+    let explosion =
+        model_loading::AnimatedModel::load(explosion_bytes, &device, &queue, &resources)?;
 
     // Now we can create a window.
 
@@ -436,7 +437,9 @@ async fn run() -> anyhow::Result<()> {
                     .iter()
                     .map(|&rotor| primitives::Rotor {
                         s: rotor.s,
-                        bv: Vec3::new(rotor.bv.xy, rotor.bv.xz, rotor.bv.yz),
+                        bv_xy: rotor.bv.xy,
+                        bv_xz: rotor.bv.xz,
+                        bv_yz: rotor.bv.yz,
                     })
                     .collect::<Vec<_>>();
 
@@ -448,8 +451,8 @@ async fn run() -> anyhow::Result<()> {
 
     let explosion_animation_states: Vec<_> = (0..num_explosions)
         .map(|_| primitives::AnimationState {
-            time: rng.gen_range(0.0..=explosion.animation.total_time()),
-            animation_duration: explosion.animation.total_time(),
+            time: rng.gen_range(0.0..=explosion.animation.total_time),
+            animation_duration: explosion.animation.total_time,
         })
         .collect();
 
@@ -471,7 +474,7 @@ async fn run() -> anyhow::Result<()> {
             .map(|index| *index as u32)
             .collect::<Vec<_>>(),
         &explosion.inverse_bind_matrices,
-        &explosion.animation_joints.local_transforms,
+        &explosion.initial_local_transforms,
         &explosion_animation_states,
     );
 
@@ -625,50 +628,78 @@ async fn run() -> anyhow::Result<()> {
                         });
 
                     if num_translation_channels > 0 {
-                        wgpu_profiler!("sampling translations", &mut profiler, &mut compute_pass, &device, {
-                            compute_pass.set_pipeline(&pipelines.sample_translations_pipeline);
-                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                            compute_pass.set_bind_group(1, &sample_translations_bind_group, &[]);
-                            compute_pass.dispatch(
-                                dispatch_count(num_explosions * num_translation_channels, 64),
-                                1,
-                                1,
-                            );
-                        });
+                        wgpu_profiler!(
+                            "sampling translations",
+                            &mut profiler,
+                            &mut compute_pass,
+                            &device,
+                            {
+                                compute_pass.set_pipeline(&pipelines.sample_translations_pipeline);
+                                compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                                compute_pass.set_bind_group(
+                                    1,
+                                    &sample_translations_bind_group,
+                                    &[],
+                                );
+                                compute_pass.dispatch(
+                                    dispatch_count(num_explosions * num_translation_channels, 64),
+                                    1,
+                                    1,
+                                );
+                            }
+                        );
                     }
 
                     if num_scale_channels > 0 {
-                        wgpu_profiler!("sampling scales", &mut profiler, &mut compute_pass, &device, {
-                            compute_pass.set_pipeline(&pipelines.sample_scales_pipeline);
-                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                            compute_pass.set_bind_group(1, &sample_scales_bind_group, &[]);
-                            compute_pass.dispatch(
-                                dispatch_count(num_explosions * num_scale_channels, 64),
-                                1,
-                                1,
-                            );
-                        });
+                        wgpu_profiler!(
+                            "sampling scales",
+                            &mut profiler,
+                            &mut compute_pass,
+                            &device,
+                            {
+                                compute_pass.set_pipeline(&pipelines.sample_scales_pipeline);
+                                compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                                compute_pass.set_bind_group(1, &sample_scales_bind_group, &[]);
+                                compute_pass.dispatch(
+                                    dispatch_count(num_explosions * num_scale_channels, 64),
+                                    1,
+                                    1,
+                                );
+                            }
+                        );
                     }
 
                     if num_rotation_channels > 0 {
-                        wgpu_profiler!("sampling rotations", &mut profiler, &mut compute_pass, &device, {
-                            compute_pass.set_pipeline(&pipelines.sample_rotations_pipeline);
-                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                            compute_pass.set_bind_group(1, &sample_rotations_bind_group, &[]);
-                            compute_pass.dispatch(
-                                dispatch_count(num_explosions * num_rotation_channels, 64),
-                                1,
-                                1,
-                            );
-                        });
+                        wgpu_profiler!(
+                            "sampling rotations",
+                            &mut profiler,
+                            &mut compute_pass,
+                            &device,
+                            {
+                                compute_pass.set_pipeline(&pipelines.sample_rotations_pipeline);
+                                compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                                compute_pass.set_bind_group(1, &sample_rotations_bind_group, &[]);
+                                compute_pass.dispatch(
+                                    dispatch_count(num_explosions * num_rotation_channels, 64),
+                                    1,
+                                    1,
+                                );
+                            }
+                        );
                     }
 
-                    wgpu_profiler!("computing joint transforms", &mut profiler, &mut compute_pass, &device, {
-                        compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
-                        compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                        compute_pass.set_bind_group(1, &bind_group, &[]);
-                        compute_pass.dispatch(dispatch_count(num_explosions, 64), 1, 1);
-                    });
+                    wgpu_profiler!(
+                        "computing joint transforms",
+                        &mut profiler,
+                        &mut compute_pass,
+                        &device,
+                        {
+                            compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
+                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                            compute_pass.set_bind_group(1, &bind_group, &[]);
+                            compute_pass.dispatch(dispatch_count(num_explosions, 64), 1, 1);
+                        }
+                    );
 
                     compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
                     compute_pass.set_bind_group(0, &bind_group, &[]);
@@ -952,8 +983,11 @@ async fn run() -> anyhow::Result<()> {
             Event::LoopDestroyed => {
                 let duration_since_epoch = std::time::UNIX_EPOCH.elapsed().unwrap();
                 let seconds = duration_since_epoch.as_secs();
-                wgpu_profiler::chrometrace::write_chrometrace(std::path::Path::new(&format!("{}.json", seconds)), &profiler_results)
-                    .unwrap();
+                wgpu_profiler::chrometrace::write_chrometrace(
+                    std::path::Path::new(&format!("{}.json", seconds)),
+                    &profiler_results,
+                )
+                .unwrap();
             }
             _ => {}
         }
@@ -1283,7 +1317,9 @@ fn create_animation_bind_group(
             scale: sim.scale,
             rotation: primitives::Rotor {
                 s: sim.rotation.s,
-                bv: Vec3::new(sim.rotation.bv.xy, sim.rotation.bv.xz, sim.rotation.bv.yz),
+                bv_xy: sim.rotation.bv.xy,
+                bv_xz: sim.rotation.bv.xz,
+                bv_yz: sim.rotation.bv.yz,
             },
         }));
     }
@@ -1415,7 +1451,7 @@ fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
     let channel_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(&format!("animation {} channel info", name)),
         usage: wgpu::BufferUsage::UNIFORM,
-        contents: bytemuck::bytes_of(&(channels.len() as u32))
+        contents: bytemuck::bytes_of(&(channels.len() as u32)),
     });
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
