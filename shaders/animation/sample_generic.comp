@@ -29,9 +29,7 @@ layout(set = 1, binding = 2) readonly buffer Channels {
 
 #include "interpolation.glsl"
 
-SAMPLE_TYPE sample_cubic_spline(float t, Channel channel, out bool invalid) {
-    invalid = t < inputs[channel.inputs_offset] || t > inputs[channel.inputs_offset + channel.num_inputs - 1];
-
+SAMPLE_TYPE sample_cubic_spline(float t, Channel channel) {
     uint i = 0;
 
     while (i < channel.num_inputs && inputs[channel.inputs_offset + i + 1] < t) {
@@ -78,9 +76,16 @@ void main() {
     float time = animation_states[animation_index].time;
 
     Channel channel = channels[channel_index];
-    bool invalid = false;
-    SAMPLE_TYPE value = sample_cubic_spline(time, channel, invalid);
-    if (!invalid) {
-        local_transforms[node_index + channel.node_index].FIELD = value;
+
+    // If the time is out of the animation range of this channel, then return.
+    if (
+        time < inputs[channel.inputs_offset] ||
+        time > inputs[channel.inputs_offset + channel.num_inputs - 1]
+    ) {
+        return;
     }
+
+    SAMPLE_TYPE value = sample_cubic_spline(time, channel);
+
+    local_transforms[node_index + channel.node_index].FIELD = value;
 }
