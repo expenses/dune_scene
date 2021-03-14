@@ -468,7 +468,6 @@ async fn run() -> anyhow::Result<()> {
             .map(|index| *index as u32)
             .collect::<Vec<_>>(),
         &explosion.inverse_bind_matrices,
-        &explosion.animation_joints.global_transforms,
         &explosion.animation_joints.local_transforms,
         &explosion_animation_states,
     );
@@ -1222,7 +1221,6 @@ fn create_animation_bind_group(
     depth_first_nodes: &[primitives::NodeAndParent],
     joint_indices_to_node_indices: &[u32],
     inverse_bind_matrices: &[Mat4],
-    global_transforms: &[ultraviolet::Similarity3],
     local_transforms: &[ultraviolet::Similarity3],
     animation_states: &[primitives::AnimationState],
 ) -> wgpu::BindGroup {
@@ -1232,7 +1230,7 @@ fn create_animation_bind_group(
     println!("{}/{}", num_joints, num_nodes);
 
     debug_assert_eq!(inverse_bind_matrices.len(), num_joints);
-    debug_assert_eq!(global_transforms.len(), num_nodes);
+    debug_assert_eq!(local_transforms.len(), num_nodes);
 
     let joints = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("animation joints"),
@@ -1263,6 +1261,8 @@ fn create_animation_bind_group(
         }));
     }
 
+    debug_assert_eq!(full_local_transforms.len(), num_nodes * num_instances);
+
     let local_transforms = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("animation local transforms"),
         usage: wgpu::BufferUsage::STORAGE,
@@ -1275,21 +1275,11 @@ fn create_animation_bind_group(
         contents: bytemuck::cast_slice(&animation_states),
     });
 
-    let mut full_global_transforms = Vec::new();
-    for _ in 0..num_instances {
-        full_global_transforms.extend(
-            global_transforms
-                .iter()
-                .map(|sim| sim.into_homogeneous_matrix()),
-        );
-    }
-
-    debug_assert_eq!(full_global_transforms.len(), num_instances * num_nodes);
-
-    let global_transforms = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let global_transforms = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("animation global transforms"),
         usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&full_global_transforms),
+        size: (std::mem::size_of::<Mat4>() * num_instances * num_nodes) as u64,
+        mapped_at_creation: false,
     });
 
     let depth_first_nodes = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
