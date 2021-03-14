@@ -387,87 +387,70 @@ async fn run() -> anyhow::Result<()> {
         ],
     });
 
+    let (sample_scales_bind_group, num_scale_channels) = create_channel_bind_group(
+        &device,
+        "scales",
+        &resources,
+        explosion.animation.scale_channels.iter().map(|channel| {
+            (
+                channel.inputs.clone(),
+                channel.outputs.clone(),
+                channel.node_index as u32,
+            )
+        }),
+    );
+
+    let (sample_translations_bind_group, num_translation_channels) = create_channel_bind_group(
+        &device,
+        "translations",
+        &resources,
+        explosion
+            .animation
+            .translation_channels
+            .iter()
+            .map(move |channel| {
+                let outputs = channel
+                    .outputs
+                    .iter()
+                    .map(|&vec| primitives::Vec3A::new(vec))
+                    .collect::<Vec<_>>();
+
+                (channel.inputs.clone(), outputs, channel.node_index as u32)
+            }),
+    );
+
+    let (sample_rotations_bind_group, num_rotation_channels) = create_channel_bind_group(
+        &device,
+        "rotations",
+        &resources,
+        explosion
+            .animation
+            .rotation_channels
+            .iter()
+            .map(move |channel| {
+                let outputs = channel
+                    .outputs
+                    .iter()
+                    .map(|&rotor| primitives::Rotor {
+                        s: rotor.s,
+                        bv: Vec3::new(rotor.bv.xy, rotor.bv.xz, rotor.bv.yz),
+                    })
+                    .collect::<Vec<_>>();
+
+                (channel.inputs.clone(), outputs, channel.node_index as u32)
+            }),
+    );
+
     let num_explosions = 50;
 
-    let mut explosion_joints_vec: Vec<_> = (0..num_explosions)
-        .map(|_| {
-            (
-                explosion.animation_joints.clone(),
-                rng.gen_range(0.0..=explosion.animation.total_time()),
-            )
+    let explosion_animation_states: Vec<_> = (0..num_explosions)
+        .map(|_| primitives::AnimationState {
+            time: rng.gen_range(0.0..=explosion.animation.total_time()),
+            animation_duration: explosion.animation.total_time(),
         })
         .collect();
 
-    let (sample_scales_bind_group, num_scale_channels) = {
-        let mut inputs = Vec::new();
-        let mut outputs = Vec::new();
-        let mut channels = Vec::new();
-
-        for channel in &explosion.animation.scale_channels {
-            let inputs_offset = inputs.len() as u32;
-            let outputs_offset = outputs.len() as u32;
-            let num_inputs = channel.inputs.len() as u32;
-            let node_index = channel.node_index as u32;
-
-            channels.push(primitives::Channel {
-                inputs_offset,
-                outputs_offset,
-                num_inputs,
-                node_index,
-            });
-
-            inputs.extend_from_slice(&channel.inputs);
-            outputs.extend_from_slice(&channel.outputs);
-        }
-
-        let bind_group =
-            create_channel_bind_group(&device, "scales", &resources, &inputs, &outputs, &channels);
-
-        (bind_group, channels.len() as u32)
-    };
-
-    let (sample_translations_bind_group, num_translation_channels) = {
-        let mut inputs = Vec::new();
-        let mut outputs = Vec::new();
-        let mut channels = Vec::new();
-
-        for channel in &explosion.animation.translation_channels {
-            let inputs_offset = inputs.len() as u32;
-            let outputs_offset = outputs.len() as u32;
-            let num_inputs = channel.inputs.len() as u32;
-            let node_index = channel.node_index as u32;
-
-            channels.push(primitives::Channel {
-                inputs_offset,
-                outputs_offset,
-                num_inputs,
-                node_index,
-            });
-
-            inputs.extend_from_slice(&channel.inputs);
-            outputs.extend(
-                channel
-                    .outputs
-                    .iter()
-                    .map(|&vec| primitives::Vec3A::new(vec)),
-            );
-        }
-
-        let bind_group = create_channel_bind_group(
-            &device,
-            "translations",
-            &resources,
-            &inputs,
-            &outputs,
-            &channels,
-        );
-
-        (bind_group, channels.len() as u32)
-    };
-
-    println!("translation channels: {}", num_translation_channels);
-
-    let (local_transforms_buffer, animation_bind_group) = create_animation_bind_group(
+    let animation_bind_group = create_animation_bind_group(
         &device,
         &resources,
         num_explosions as usize,
@@ -487,13 +470,7 @@ async fn run() -> anyhow::Result<()> {
         &explosion.inverse_bind_matrices,
         &explosion.animation_joints.global_transforms,
         &explosion.animation_joints.local_transforms,
-        &explosion_joints_vec
-            .iter()
-            .map(|&(_, time)| primitives::AnimationState {
-                time,
-                animation_duration: explosion.animation.total_time(),
-            })
-            .collect::<Vec<_>>(),
+        &explosion_animation_states,
     );
 
     let position_instances: Vec<_> = (0..num_explosions)
@@ -633,56 +610,6 @@ async fn run() -> anyhow::Result<()> {
                         }),
                     );
 
-                    let mut local_transforms = Vec::new();
-
-                    for (explosion_joints, animation_time) in &mut explosion_joints_vec {
-                        explosion.animation.animate(
-                            explosion_joints,
-                            *animation_time,
-                            &explosion.depth_first_nodes,
-                        );
-
-                        for l in &explosion_joints.local_transforms {
-                            local_transforms.push(primitives::Similarity {
-                                scale: l.scale,
-                                translation: l.translation,
-                                rotation: primitives::Rotor {
-                                    s: l.rotation.s,
-                                    bv: Vec3::new(
-                                        l.rotation.bv.xy,
-                                        l.rotation.bv.xz,
-                                        l.rotation.bv.yz,
-                                    ),
-                                },
-                            });
-                        }
-                    }
-
-                    for (explosion_joints, animation_time) in &mut explosion_joints_vec {
-                        *animation_time =
-                            (*animation_time + delta_time) % explosion.animation.total_time();
-                    }
-
-                    for (i, transform) in local_transforms.iter().enumerate() {
-                        //queue.write_buffer(
-                        //    &local_transforms_buffer,
-                        //    (i * std::mem::size_of::<primitives::Similarity>()) as u64,
-                        //    bytemuck::bytes_of(&transform.translation),
-                        //);
-                        //queue.write_buffer(
-                        //    &local_transforms_buffer,
-                        //    (i * std::mem::size_of::<primitives::Similarity>() + std::mem::size_of::<ultraviolet::Vec3>()) as u64,
-                        //    bytemuck::bytes_of(&transform.scale),
-                        //);
-                        queue.write_buffer(
-                            &local_transforms_buffer,
-                            (i * std::mem::size_of::<primitives::Similarity>()
-                                + std::mem::size_of::<ultraviolet::Vec4>())
-                                as u64,
-                            bytemuck::bytes_of(&transform.rotation),
-                        );
-                    }
-
                     let mut encoder =
                         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                             label: Some("render encoder"),
@@ -710,6 +637,17 @@ async fn run() -> anyhow::Result<()> {
                         compute_pass.set_bind_group(1, &sample_scales_bind_group, &[]);
                         compute_pass.dispatch(
                             dispatch_count(num_explosions * num_scale_channels, 64),
+                            1,
+                            1,
+                        );
+                    }
+
+                    if num_rotation_channels > 0 {
+                        compute_pass.set_pipeline(&pipelines.sample_rotations_pipeline);
+                        compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                        compute_pass.set_bind_group(1, &sample_rotations_bind_group, &[]);
+                        compute_pass.dispatch(
+                            dispatch_count(num_explosions * num_rotation_channels, 64),
                             1,
                             1,
                         );
@@ -1287,7 +1225,7 @@ fn create_animation_bind_group(
     global_transforms: &[ultraviolet::Similarity3],
     local_transforms: &[ultraviolet::Similarity3],
     animation_states: &[primitives::AnimationState],
-) -> (wgpu::Buffer, wgpu::BindGroup) {
+) -> wgpu::BindGroup {
     let num_joints = joint_indices_to_node_indices.len();
     let num_nodes = depth_first_nodes.len();
 
@@ -1327,7 +1265,7 @@ fn create_animation_bind_group(
 
     let local_transforms = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("animation local transforms"),
-        usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
+        usage: wgpu::BufferUsage::STORAGE,
         contents: bytemuck::cast_slice(&full_local_transforms),
     });
 
@@ -1373,7 +1311,7 @@ fn create_animation_bind_group(
         contents: bytemuck::cast_slice(inverse_bind_matrices),
     });
 
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("animation bind group"),
         layout: &resources.animation_bgl,
         entries: &[
@@ -1410,46 +1348,54 @@ fn create_animation_bind_group(
                 resource: inverse_bind_matrices.as_entire_binding(),
             },
         ],
-    });
-
-    (local_transforms, bind_group)
+    })
 }
 
-fn create_channel_bind_group<T: bytemuck::Pod>(
+fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
     device: &wgpu::Device,
     name: &str,
     resources: &RenderResources,
-    inputs: &[f32],
-    outputs: &[T],
-    channels: &[primitives::Channel],
-) -> wgpu::BindGroup {
-    println!(
-        "i: {}, o: {}, c: {}",
-        inputs.len(),
-        outputs.len(),
-        channels.len()
-    );
-    println!("{:?}", channels);
+    iter: impl Iterator<Item = (Vec<f32>, Vec<T>, u32)>,
+) -> (wgpu::BindGroup, u32) {
+    let mut combined_inputs = Vec::new();
+    let mut combined_outputs = Vec::new();
+    let mut channels = Vec::new();
+
+    for (inputs, outputs, node_index) in iter {
+        let inputs_offset = combined_inputs.len() as u32;
+        let outputs_offset = combined_outputs.len() as u32;
+        let num_inputs = inputs.len() as u32;
+
+        channels.push(primitives::Channel {
+            inputs_offset,
+            outputs_offset,
+            num_inputs,
+            node_index,
+        });
+
+        combined_inputs.extend_from_slice(&inputs);
+        combined_outputs.extend_from_slice(&outputs);
+    }
 
     let inputs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(&format!("animation {} channel inputs", name)),
         usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(inputs),
+        contents: bytemuck::cast_slice(&combined_inputs),
     });
 
     let outputs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(&format!("animation {} channel outputs", name)),
         usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(outputs),
+        contents: bytemuck::cast_slice(&combined_outputs),
     });
 
-    let channels = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let channels_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(&format!("animation {} channels", name)),
         usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(channels),
+        contents: bytemuck::cast_slice(&channels),
     });
 
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some(&format!("animation {} channels bind group", name)),
         layout: &resources.channels_bgl,
         entries: &[
@@ -1463,8 +1409,10 @@ fn create_channel_bind_group<T: bytemuck::Pod>(
             },
             wgpu::BindGroupEntry {
                 binding: 2,
-                resource: channels.as_entire_binding(),
+                resource: channels_buffer.as_entire_binding(),
             },
         ],
-    })
+    });
+
+    (bind_group, channels.len() as u32)
 }
