@@ -148,6 +148,7 @@ impl RenderResources {
                     storage(0, wgpu::ShaderStage::COMPUTE, true),
                     storage(1, wgpu::ShaderStage::COMPUTE, true),
                     storage(2, wgpu::ShaderStage::COMPUTE, true),
+                    uniform(3, wgpu::ShaderStage::COMPUTE),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {

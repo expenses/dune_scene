@@ -27,6 +27,10 @@ layout(set = 1, binding = 2) readonly buffer Channels {
     Channel channels[];
 };
 
+layout(set = 1, binding = 3) uniform ChannelInfo {
+    uint num_channels;
+};
+
 #include "interpolation.glsl"
 
 SAMPLE_TYPE sample_cubic_spline(float t, Channel channel) {
@@ -63,10 +67,8 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint index = gl_GlobalInvocationID.x;
 
-    uint channels_per_animation = channels.length();
-
-    uint animation_index = index / channels_per_animation;
-    uint channel_index = index % channels_per_animation;
+    uint animation_index = index / num_channels;
+    uint channel_index = index % num_channels;
     uint node_index = animation_index * animation_info.num_nodes;
 
     if (animation_index >= animation_info.num_instances) {

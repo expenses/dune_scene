@@ -70,14 +70,10 @@ struct LandCraft {
     mat3 rotation_matrix;
 };
 
-struct Bivec {
-    float xy;
-    float xz;
-    float yz;
-};
-
 struct Rotor {
-    Bivec bv;
+    float bv_xy;
+    float bv_xz;
+    float bv_yz;
     float s;
 };
 

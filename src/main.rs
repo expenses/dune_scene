@@ -1412,6 +1412,12 @@ fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
         contents: bytemuck::cast_slice(&channels),
     });
 
+    let channel_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&format!("animation {} channel info", name)),
+        usage: wgpu::BufferUsage::UNIFORM,
+        contents: bytemuck::bytes_of(&(channels.len() as u32))
+    });
+
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some(&format!("animation {} channels bind group", name)),
         layout: &resources.channels_bgl,
@@ -1427,6 +1433,10 @@ fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
             wgpu::BindGroupEntry {
                 binding: 2,
                 resource: channels_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: channel_info.as_entire_binding(),
             },
         ],
     });
