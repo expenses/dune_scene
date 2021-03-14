@@ -191,6 +191,7 @@ pub struct AnimatedVertex {
 pub struct AnimationInfo {
     pub num_joints: u32,
     pub num_nodes: u32,
+    pub num_instances: u32,
 }
 
 #[repr(C)]

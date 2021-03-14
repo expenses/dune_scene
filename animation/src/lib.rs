@@ -174,11 +174,11 @@ impl AnimationJoints {
 }
 
 #[derive(Debug)]
-struct Channel<T> {
+pub struct Channel<T> {
     interpolation: Interpolation,
-    inputs: Vec<f32>,
-    outputs: Vec<T>,
-    node_index: usize,
+    pub inputs: Vec<f32>,
+    pub outputs: Vec<T>,
+    pub node_index: usize,
 }
 
 impl<T: Interpolate> Channel<T> {
@@ -249,7 +249,7 @@ pub struct Animation {
     total_time: f32,
     translation_channels: Vec<Channel<Vec3>>,
     rotation_channels: Vec<Channel<Rotor3>>,
-    scale_channels: Vec<Channel<f32>>,
+    pub scale_channels: Vec<Channel<f32>>,
 }
 
 impl Animation {

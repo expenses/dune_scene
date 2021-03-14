@@ -3,9 +3,8 @@
 
 #include "../includes/structs.glsl"
 
-layout(set = 0, binding = 1) uniform AnimationInfo {
-    uint num_joints;
-    uint num_nodes;
+layout(set = 0, binding = 1) uniform AnimationInfoUniform {
+    AnimationInfo animation_info;
 };
 
 layout(set = 0, binding = 2) writeonly buffer LocalTransforms {
@@ -42,18 +41,17 @@ void main() {
 
     uint animation_index = index / channels_per_animation;
     uint channel_index = index % channels_per_animation;
-    uint node_index = animation_index * num_nodes;
+    uint node_index = animation_index * animation_info.num_nodes;
 
-    if (animation_index >= animation_states.length()) {
+    if (animation_index >= animation_info.num_instances) {
         return;
     }
 
     float time = animation_states[animation_index].time;
 
     Channel channel = scale_channels[channel_index];
-    float scale;
-    bool invalid;
-    sample_cubic_spline(time, channel, scale, invalid);
+    bool invalid = false;
+    float scale = sample_cubic_spline(time, channel, invalid);
     if (!invalid) {
         local_transforms[node_index + channel.node_index].scale = scale;
     }

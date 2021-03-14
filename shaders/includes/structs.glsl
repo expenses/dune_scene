@@ -97,3 +97,9 @@ struct Channel {
     uint num_inputs;
     uint node_index;
 };
+
+struct AnimationInfo {
+    uint num_joints;
+    uint num_nodes;
+    uint num_instances;
+};

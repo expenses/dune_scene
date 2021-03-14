@@ -42,11 +42,8 @@ vec3 cublic_spline_interpolate(
         + m1 * (t3 - t2);
 }
 
-void sample_cubic_spline(float t, Channel channel, out SAMPLE_TYPE output_sample, out bool invalid) {
-    if (t < CHANNEL_INPUTS[channel.inputs_offset] || t > CHANNEL_INPUTS[channel.inputs_offset + channel.num_inputs - 1]) {
-        invalid = true;
-        return;
-    }
+SAMPLE_TYPE sample_cubic_spline(float t, Channel channel, out bool invalid) {
+    invalid = t < CHANNEL_INPUTS[channel.inputs_offset] || t > CHANNEL_INPUTS[channel.inputs_offset + channel.num_inputs - 1];
 
     uint i = 0;
 
@@ -66,7 +63,7 @@ void sample_cubic_spline(float t, Channel channel, out SAMPLE_TYPE output_sample
     SAMPLE_TYPE ending_in_tangent = CHANNEL_OUTPUTS[channel.outputs_offset + i * 3 + 3];
     SAMPLE_TYPE ending_point = CHANNEL_OUTPUTS[channel.outputs_offset + i * 3 + 4];
 
-    output_sample = cublic_spline_interpolate(
+    return cublic_spline_interpolate(
         starting_point,
         starting_out_tangent,
         ending_point,
@@ -74,6 +71,4 @@ void sample_cubic_spline(float t, Channel channel, out SAMPLE_TYPE output_sample
         delta,
         factor
     );
-
-    return;
 }

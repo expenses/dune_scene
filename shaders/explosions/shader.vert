@@ -21,15 +21,14 @@ layout(set = 2, binding = 0) readonly buffer JointTransforms {
     mat4 joint_transforms[];
 };
 
-layout(set = 2, binding = 1) uniform AnimationInfo {
-    uint num_joints;
-    uint num_nodes;
+layout(set = 2, binding = 1) uniform AnimationInfoUniform {
+    AnimationInfo animation_info;
 };
 
 void main() {
     out_uv = in_uv;
 
-    uint joint_offset = gl_InstanceIndex * num_joints;
+    uint joint_offset = gl_InstanceIndex * animation_info.num_joints;
 
     // Calculate skinned matrix from weights and joint indices of the current vertex
 	mat4 skin =

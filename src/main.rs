@@ -398,6 +398,34 @@ async fn run() -> anyhow::Result<()> {
         })
         .collect();
 
+    let mut inputs = Vec::new();
+    let mut outputs = Vec::new();
+    let mut channels = Vec::new();
+
+    for channel in &explosion.animation.scale_channels {
+        let inputs_offset = inputs.len() as u32;
+        let outputs_offset = outputs.len() as u32;
+        let num_inputs = channel.inputs.len() as u32;
+        let node_index = channel.node_index as u32;
+
+        channels.push(primitives::Channel {
+            inputs_offset,
+            outputs_offset,
+            num_inputs,
+            node_index,
+        });
+
+        inputs.extend_from_slice(&channel.inputs);
+        outputs.extend_from_slice(&channel.outputs);
+    }
+
+    let num_scale_channels = channels.len() as u32;
+
+    println!("{:?}", channels);
+
+    let sample_scales_bind_group =
+        create_channel_bind_group(&device, "scales", &resources, &inputs, &outputs, &channels);
+
     let (local_transforms_buffer, animation_bind_group) = create_animation_bind_group(
         &device,
         &resources,
@@ -416,12 +444,8 @@ async fn run() -> anyhow::Result<()> {
             .map(|index| *index as u32)
             .collect::<Vec<_>>(),
         &explosion.inverse_bind_matrices,
-        &explosion
-            .animation_joints
-            .global_transforms
-            .iter()
-            .map(|gt| gt.into_homogeneous_matrix())
-            .collect::<Vec<_>>(),
+        &explosion.animation_joints.global_transforms,
+        &explosion.animation_joints.local_transforms,
         &explosion_joints_vec
             .iter()
             .map(|&(_, time)| primitives::AnimationState {
@@ -571,8 +595,6 @@ async fn run() -> anyhow::Result<()> {
                     let mut local_transforms = Vec::new();
 
                     for (explosion_joints, animation_time) in &mut explosion_joints_vec {
-                        *animation_time =
-                            (*animation_time + delta_time) % explosion.animation.total_time();
                         explosion.animation.animate(
                             explosion_joints,
                             *animation_time,
@@ -595,11 +617,30 @@ async fn run() -> anyhow::Result<()> {
                         }
                     }
 
-                    queue.write_buffer(
-                        &local_transforms_buffer,
-                        0,
-                        bytemuck::cast_slice(&local_transforms),
-                    );
+                    for (explosion_joints, animation_time) in &mut explosion_joints_vec {
+                        *animation_time =
+                            (*animation_time + delta_time) % explosion.animation.total_time();
+                    }
+
+                    for (i, transform) in local_transforms.iter().enumerate() {
+                        queue.write_buffer(
+                            &local_transforms_buffer,
+                            (i * std::mem::size_of::<primitives::Similarity>()) as u64,
+                            bytemuck::bytes_of(&transform.translation),
+                        );
+                        //queue.write_buffer(
+                        //    &local_transforms_buffer,
+                        //    (i * std::mem::size_of::<primitives::Similarity>() + std::mem::size_of::<ultraviolet::Vec3>()) as u64,
+                        //    bytemuck::bytes_of(&transform.scale),
+                        //);
+                        queue.write_buffer(
+                            &local_transforms_buffer,
+                            (i * std::mem::size_of::<primitives::Similarity>()
+                                + std::mem::size_of::<ultraviolet::Vec4>())
+                                as u64,
+                            bytemuck::bytes_of(&transform.rotation),
+                        );
+                    }
 
                     let mut encoder =
                         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -610,6 +651,17 @@ async fn run() -> anyhow::Result<()> {
                         encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                             label: Some("compute pass"),
                         });
+
+                    if num_scale_channels > 0 {
+                        compute_pass.set_pipeline(&pipelines.sample_scales_pipeline);
+                        compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                        compute_pass.set_bind_group(1, &sample_scales_bind_group, &[]);
+                        compute_pass.dispatch(
+                            dispatch_count(num_explosions * num_scale_channels, 64),
+                            1,
+                            1,
+                        );
+                    }
 
                     compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
                     compute_pass.set_bind_group(0, &animation_bind_group, &[]);
@@ -1180,7 +1232,8 @@ fn create_animation_bind_group(
     depth_first_nodes: &[primitives::NodeAndParent],
     joint_indices_to_node_indices: &[u32],
     inverse_bind_matrices: &[Mat4],
-    global_transforms: &[Mat4],
+    global_transforms: &[ultraviolet::Similarity3],
+    local_transforms: &[ultraviolet::Similarity3],
     animation_states: &[primitives::AnimationState],
 ) -> (wgpu::Buffer, wgpu::BindGroup) {
     let num_joints = joint_indices_to_node_indices.len();
@@ -1204,14 +1257,26 @@ fn create_animation_bind_group(
         contents: bytemuck::bytes_of(&primitives::AnimationInfo {
             num_joints: num_joints as u32,
             num_nodes: num_nodes as u32,
+            num_instances: num_instances as u32,
         }),
     });
 
-    let local_transforms = device.create_buffer(&wgpu::BufferDescriptor {
+    let mut full_local_transforms = Vec::new();
+    for _ in 0..num_instances {
+        full_local_transforms.extend(local_transforms.iter().map(|sim| primitives::Similarity {
+            translation: sim.translation,
+            scale: sim.scale,
+            rotation: primitives::Rotor {
+                s: sim.rotation.s,
+                bv: Vec3::new(sim.rotation.bv.xy, sim.rotation.bv.xz, sim.rotation.bv.yz),
+            },
+        }));
+    }
+
+    let local_transforms = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("animation local transforms"),
         usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
-        size: (num_nodes * num_instances * std::mem::size_of::<primitives::Similarity>()) as u64,
-        mapped_at_creation: false,
+        contents: bytemuck::cast_slice(&full_local_transforms),
     });
 
     let animation_states = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1220,11 +1285,16 @@ fn create_animation_bind_group(
         contents: bytemuck::cast_slice(&animation_states),
     });
 
-    let mut full_global_transforms = vec![Mat4::identity(); num_nodes * num_instances];
-    for i in 0..num_instances {
-        full_global_transforms[i * num_nodes..(i + 1) * num_nodes]
-            .copy_from_slice(global_transforms);
+    let mut full_global_transforms = Vec::new();
+    for _ in 0..num_instances {
+        full_global_transforms.extend(
+            global_transforms
+                .iter()
+                .map(|sim| sim.into_homogeneous_matrix()),
+        );
     }
+
+    debug_assert_eq!(full_global_transforms.len(), num_instances * num_nodes);
 
     let global_transforms = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("animation global transforms"),
@@ -1301,6 +1371,14 @@ fn create_channel_bind_group<T: bytemuck::Pod>(
     outputs: &[T],
     channels: &[primitives::Channel],
 ) -> wgpu::BindGroup {
+    println!(
+        "i: {}, o: {}, c: {}",
+        inputs.len(),
+        outputs.len(),
+        channels.len()
+    );
+    println!("{:?}", channels);
+
     let inputs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(&format!("animation {} channel inputs", name)),
         usage: wgpu::BufferUsage::STORAGE,
