@@ -7,6 +7,7 @@ use rand::Rng;
 use resources_and_pipelines::{Pipelines, RenderResources};
 use ultraviolet::{Mat4, Vec2, Vec3};
 use wgpu::util::DeviceExt;
+use wgpu_profiler::wgpu_profiler;
 
 fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "wasm"))]
@@ -49,7 +50,7 @@ async fn run() -> anyhow::Result<()> {
         .request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("device"),
-                features: wgpu::Features::empty(),
+                features: wgpu_profiler::GpuProfiler::REQUIRED_WGPU_FEATURES,
                 limits: wgpu::Limits {
                     max_storage_buffers_per_shader_stage: 7,
                     ..Default::default()
@@ -58,6 +59,8 @@ async fn run() -> anyhow::Result<()> {
             None,
         )
         .await?;
+
+    let mut profiler = wgpu_profiler::GpuProfiler::new(4, adapter.get_timestamp_period());
 
     let resources = RenderResources::new(&device);
 
@@ -500,6 +503,8 @@ async fn run() -> anyhow::Result<()> {
     let mut previous_cursor_position = Vec2::zero();
     let mut mouse_down = false;
 
+    let mut profiler_results = Vec::new();
+
     event_loop.run(move |event, _, control_flow| {
         imgui_platform.handle_event(imgui.io_mut(), &window, &event);
 
@@ -620,42 +625,50 @@ async fn run() -> anyhow::Result<()> {
                         });
 
                     if num_translation_channels > 0 {
-                        compute_pass.set_pipeline(&pipelines.sample_translations_pipeline);
-                        compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                        compute_pass.set_bind_group(1, &sample_translations_bind_group, &[]);
-                        compute_pass.dispatch(
-                            dispatch_count(num_explosions * num_translation_channels, 64),
-                            1,
-                            1,
-                        );
+                        wgpu_profiler!("sampling translations", &mut profiler, &mut compute_pass, &device, {
+                            compute_pass.set_pipeline(&pipelines.sample_translations_pipeline);
+                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                            compute_pass.set_bind_group(1, &sample_translations_bind_group, &[]);
+                            compute_pass.dispatch(
+                                dispatch_count(num_explosions * num_translation_channels, 64),
+                                1,
+                                1,
+                            );
+                        });
                     }
 
                     if num_scale_channels > 0 {
-                        compute_pass.set_pipeline(&pipelines.sample_scales_pipeline);
-                        compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                        compute_pass.set_bind_group(1, &sample_scales_bind_group, &[]);
-                        compute_pass.dispatch(
-                            dispatch_count(num_explosions * num_scale_channels, 64),
-                            1,
-                            1,
-                        );
+                        wgpu_profiler!("sampling scales", &mut profiler, &mut compute_pass, &device, {
+                            compute_pass.set_pipeline(&pipelines.sample_scales_pipeline);
+                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                            compute_pass.set_bind_group(1, &sample_scales_bind_group, &[]);
+                            compute_pass.dispatch(
+                                dispatch_count(num_explosions * num_scale_channels, 64),
+                                1,
+                                1,
+                            );
+                        });
                     }
 
                     if num_rotation_channels > 0 {
-                        compute_pass.set_pipeline(&pipelines.sample_rotations_pipeline);
-                        compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                        compute_pass.set_bind_group(1, &sample_rotations_bind_group, &[]);
-                        compute_pass.dispatch(
-                            dispatch_count(num_explosions * num_rotation_channels, 64),
-                            1,
-                            1,
-                        );
+                        wgpu_profiler!("sampling rotations", &mut profiler, &mut compute_pass, &device, {
+                            compute_pass.set_pipeline(&pipelines.sample_rotations_pipeline);
+                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                            compute_pass.set_bind_group(1, &sample_rotations_bind_group, &[]);
+                            compute_pass.dispatch(
+                                dispatch_count(num_explosions * num_rotation_channels, 64),
+                                1,
+                                1,
+                            );
+                        });
                     }
 
-                    compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
-                    compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                    compute_pass.set_bind_group(1, &bind_group, &[]);
-                    compute_pass.dispatch(dispatch_count(num_explosions, 64), 1, 1);
+                    wgpu_profiler!("computing joint transforms", &mut profiler, &mut compute_pass, &device, {
+                        compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
+                        compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                        compute_pass.set_bind_group(1, &bind_group, &[]);
+                        compute_pass.dispatch(dispatch_count(num_explosions, 64), 1, 1);
+                    });
 
                     compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
                     compute_pass.set_bind_group(0, &bind_group, &[]);
@@ -924,10 +937,24 @@ async fn run() -> anyhow::Result<()> {
 
                     drop(render_pass);
 
+                    profiler.resolve_queries(&mut encoder);
+
                     queue.submit(Some(encoder.finish()));
+
+                    profiler.end_frame().unwrap();
+
+                    if let Some(results) = profiler.process_finished_frame() {
+                        profiler_results.extend(results);
+                    }
                 }
                 Err(error) => println!("Swap chain error: {:?}", error),
             },
+            Event::LoopDestroyed => {
+                let duration_since_epoch = std::time::UNIX_EPOCH.elapsed().unwrap();
+                let seconds = duration_since_epoch.as_secs();
+                wgpu_profiler::chrometrace::write_chrometrace(std::path::Path::new(&format!("{}.json", seconds)), &profiler_results)
+                    .unwrap();
+            }
             _ => {}
         }
     });

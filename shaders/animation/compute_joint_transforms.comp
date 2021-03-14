@@ -83,6 +83,8 @@ void main() {
 
         if (indices.parent_index != -1) {
             Similarity parent_transform = global_transforms[nodes_offset + indices.parent_index];
+            // Multiplying similarities seems to be about 10us faster than converting to matrices
+            // and multiplying those (50us vs 40us)!
             global_transforms[node_index] = similiarity_mul_similarity(parent_transform, local_transform);
         } else {
             global_transforms[node_index] = local_transform;
