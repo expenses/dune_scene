@@ -32,3 +32,26 @@ mat3 rotor_to_matrix(Rotor r) {
         )
     );
 }
+
+// https://github.com/termhn/ultraviolet/blob/9653d78b68aa19659b904d33d33239bbd2907504/src/rotor.rs#L291-L297
+Rotor rotor_mul_scalar(Rotor rotor, float scalar) {
+    rotor.s *= scalar;
+    rotor.bv *= scalar;
+    return rotor;
+}
+
+// https://github.com/termhn/ultraviolet/blob/9653d78b68aa19659b904d33d33239bbd2907504/src/rotor.rs#L248-L254
+Rotor rotor_add_rotor(Rotor a, Rotor b) {
+    a.s += b.s;
+    a.bv += b.bv;
+    return a;
+}
+
+// https://github.com/termhn/ultraviolet/blob/9653d78b68aa19659b904d33d33239bbd2907504/src/rotor.rs#L122-L137
+Rotor rotor_normalize(Rotor rotor) {
+    float mag_sq = dot(rotor.bv, rotor.bv) + rotor.s * rotor.s;
+    float inv_mag = inversesqrt(mag_sq);
+    rotor.s *= inv_mag;
+    rotor.bv *= inv_mag;
+    return rotor;
+}
