@@ -1278,7 +1278,7 @@ fn create_animation_bind_group(
     let global_transforms = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("animation global transforms"),
         usage: wgpu::BufferUsage::STORAGE,
-        size: (std::mem::size_of::<Mat4>() * num_instances * num_nodes) as u64,
+        size: (std::mem::size_of::<primitives::Similarity>() * num_instances * num_nodes) as u64,
         mapped_at_creation: false,
     });
 

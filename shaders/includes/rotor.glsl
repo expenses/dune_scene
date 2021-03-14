@@ -55,3 +55,27 @@ Rotor rotor_normalize(Rotor rotor) {
     rotor.bv *= inv_mag;
     return rotor;
 }
+
+Rotor rotor_mul_rotor(Rotor r, Rotor q) {
+    Rotor res;
+    res.s = r.s * q.s - r.bv.x * q.bv.x - r.bv.y * q.bv.y - r.bv.z * q.bv.z;
+    res.bv = vec3(
+        r.bv.x * q.s + r.s * q.bv.x + r.bv.z * q.bv.y - r.bv.y * q.bv.z,
+        r.bv.y * q.s + r.s * q.bv.y - r.bv.z * q.bv.x + r.bv.x * q.bv.y,
+        r.bv.z * q.s + r.s * q.bv.z + r.bv.y * q.bv.x - r.bv.x * q.bv.z
+    );
+    return res;
+}
+
+vec3 rotor_mul_vec(Rotor r, vec3 vec) {
+    float fx = r.s * vec.x + r.bv.x * vec.y + r.bv.y * vec.z;
+    float fy = r.s * vec.y - r.bv.x * vec.x + r.bv.z * vec.z;
+    float fz = r.s * vec.z - r.bv.y * vec.x - r.bv.z * vec.y;
+    float fw = r.bv.x * vec.z - r.bv.y * vec.y + r.bv.z * vec.x;
+
+    return vec3(
+        r.s * fx + r.bv.x * fy + r.bv.y * fz + r.bv.z * fw,
+        r.s * fy - r.bv.x * fx - r.bv.y * fw + r.bv.z * fz,
+        r.s * fz + r.bv.x * fw - r.bv.y * fx - r.bv.z * fy
+    );
+}
