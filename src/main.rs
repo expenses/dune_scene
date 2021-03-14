@@ -1292,3 +1292,49 @@ fn create_animation_bind_group(
 
     (local_transforms, bind_group)
 }
+
+fn create_channel_bind_group<T: bytemuck::Pod>(
+    device: &wgpu::Device,
+    name: &str,
+    resources: &RenderResources,
+    inputs: &[f32],
+    outputs: &[T],
+    channels: &[primitives::Channel],
+) -> wgpu::BindGroup {
+    let inputs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&format!("animation {} channel inputs", name)),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(inputs),
+    });
+
+    let outputs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&format!("animation {} channel outputs", name)),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(outputs),
+    });
+
+    let channels = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&format!("animation {} channels", name)),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(channels),
+    });
+
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(&format!("animation {} channels bind group", name)),
+        layout: &resources.channels_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: inputs.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: outputs.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: channels.as_entire_binding(),
+            },
+        ],
+    })
+}

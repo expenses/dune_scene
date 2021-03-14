@@ -3,7 +3,12 @@
 
 #include "../includes/structs.glsl"
 
-layout(set = 0, binding = 1) writeonly buffer LocalTransforms {
+layout(set = 0, binding = 1) uniform AnimationInfo {
+    uint num_joints;
+    uint num_nodes;
+};
+
+layout(set = 0, binding = 2) writeonly buffer LocalTransforms {
     Similarity local_transforms[];
 };
 
@@ -33,24 +38,22 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint index = gl_GlobalInvocationID.x;
 
-    if (index >= scale_channels.length()) {
+    uint channels_per_animation = scale_channels.length();
+
+    uint animation_index = index / channels_per_animation;
+    uint channel_index = index % channels_per_animation;
+    uint node_index = animation_index * num_nodes;
+
+    if (animation_index >= animation_states.length()) {
         return;
     }
 
-    uint channels_per_animation = scale_channels.length() / animation_states.length();
-
-    uint animation_index = index / channels_per_animation;
-
-    uint nodes_per_animation = local_transforms.length() / animation_states.length();
-
-    uint node_index = animation_index * nodes_per_animation;
-
     float time = animation_states[animation_index].time;
 
-    Channel channel = scale_channels[index];
+    Channel channel = scale_channels[channel_index];
     float scale;
     bool invalid;
-    sample_cubic_spline_float(time, channel, scale, invalid);
+    sample_cubic_spline(time, channel, scale, invalid);
     if (!invalid) {
         local_transforms[node_index + channel.node_index].scale = scale;
     }

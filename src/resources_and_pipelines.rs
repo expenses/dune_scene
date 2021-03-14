@@ -12,6 +12,7 @@ pub struct RenderResources {
     pub particles_bgl: wgpu::BindGroupLayout,
     pub land_craft_bgl: wgpu::BindGroupLayout,
     pub animation_bgl: wgpu::BindGroupLayout,
+    pub channels_bgl: wgpu::BindGroupLayout,
     pub sampler: wgpu::Sampler,
 }
 
@@ -141,6 +142,14 @@ impl RenderResources {
                     storage(7, wgpu::ShaderStage::COMPUTE, true),
                 ],
             }),
+            channels_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("channels bind group layout"),
+                entries: &[
+                    storage(0, wgpu::ShaderStage::COMPUTE, true),
+                    storage(1, wgpu::ShaderStage::COMPUTE, true),
+                    storage(2, wgpu::ShaderStage::COMPUTE, true),
+                ],
+            }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("linear sampler"),
                 mag_filter: wgpu::FilterMode::Linear,
@@ -166,6 +175,7 @@ pub struct Pipelines {
     pub ship_movement_pipeline: wgpu::ComputePipeline,
     pub particles_movement_pipeline: wgpu::ComputePipeline,
     pub land_craft_movement_pipeline: wgpu::ComputePipeline,
+    pub sample_scales_pipeline: wgpu::ComputePipeline,
     pub compute_joint_transforms_pipeline: wgpu::ComputePipeline,
     pub bake_height_map_pipeline: wgpu::RenderPipeline,
     pub explosions_pipeline: wgpu::RenderPipeline,
@@ -196,6 +206,13 @@ impl Pipelines {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("particles pipeline layout"),
                 bind_group_layouts: &[&resources.main_bgl, &resources.particles_bgl],
+                push_constant_ranges: &[],
+            });
+
+        let animation_sampling_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("animation sampling pipeline layout"),
+                bind_group_layouts: &[&resources.animation_bgl, &resources.channels_bgl],
                 push_constant_ranges: &[],
             });
 
@@ -606,6 +623,18 @@ impl Pipelines {
                     label: Some("create joint transforms pipeline"),
                     layout: Some(&compute_joint_transforms_pipeline_layout),
                     module: &cs_compute_joint_transforms,
+                    entry_point: "main",
+                })
+            },
+            sample_scales_pipeline: {
+                let cs_sample_scales =
+                    wgpu::include_spirv!("../shaders/compiled/animation_sample_scales.comp.spv");
+                let cs_sample_scales = device.create_shader_module(&cs_sample_scales);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("sample scales pipeline"),
+                    layout: Some(&animation_sampling_pipeline_layout),
+                    module: &cs_sample_scales,
                     entry_point: "main",
                 })
             },

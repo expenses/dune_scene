@@ -206,3 +206,12 @@ pub struct AnimationState {
     pub time: f32,
     pub animation_duration: f32,
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Channel {
+    pub inputs_offset: u32,
+    pub outputs_offset: u32,
+    pub num_inputs: u32,
+    pub node_index: u32,
+}

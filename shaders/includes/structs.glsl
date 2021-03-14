@@ -70,12 +70,6 @@ struct LandCraft {
     mat3 rotation_matrix;
 };
 
-struct Channel {
-    uint offset;
-    uint size;
-    uint node_index;
-};
-
 struct Rotor {
     vec3 bv;
     float s;
@@ -95,4 +89,11 @@ struct NodeAndParent {
 struct AnimationState {
     float time;
     float animation_duration;
+};
+
+struct Channel {
+    uint inputs_offset;
+    uint outputs_offset;
+    uint num_inputs;
+    uint node_index;
 };
