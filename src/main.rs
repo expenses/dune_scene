@@ -398,33 +398,74 @@ async fn run() -> anyhow::Result<()> {
         })
         .collect();
 
-    let mut inputs = Vec::new();
-    let mut outputs = Vec::new();
-    let mut channels = Vec::new();
+    let (sample_scales_bind_group, num_scale_channels) = {
+        let mut inputs = Vec::new();
+        let mut outputs = Vec::new();
+        let mut channels = Vec::new();
 
-    for channel in &explosion.animation.scale_channels {
-        let inputs_offset = inputs.len() as u32;
-        let outputs_offset = outputs.len() as u32;
-        let num_inputs = channel.inputs.len() as u32;
-        let node_index = channel.node_index as u32;
+        for channel in &explosion.animation.scale_channels {
+            let inputs_offset = inputs.len() as u32;
+            let outputs_offset = outputs.len() as u32;
+            let num_inputs = channel.inputs.len() as u32;
+            let node_index = channel.node_index as u32;
 
-        channels.push(primitives::Channel {
-            inputs_offset,
-            outputs_offset,
-            num_inputs,
-            node_index,
-        });
+            channels.push(primitives::Channel {
+                inputs_offset,
+                outputs_offset,
+                num_inputs,
+                node_index,
+            });
 
-        inputs.extend_from_slice(&channel.inputs);
-        outputs.extend_from_slice(&channel.outputs);
-    }
+            inputs.extend_from_slice(&channel.inputs);
+            outputs.extend_from_slice(&channel.outputs);
+        }
 
-    let num_scale_channels = channels.len() as u32;
+        let bind_group =
+            create_channel_bind_group(&device, "scales", &resources, &inputs, &outputs, &channels);
 
-    println!("{:?}", channels);
+        (bind_group, channels.len() as u32)
+    };
 
-    let sample_scales_bind_group =
-        create_channel_bind_group(&device, "scales", &resources, &inputs, &outputs, &channels);
+    let (sample_translations_bind_group, num_translation_channels) = {
+        let mut inputs = Vec::new();
+        let mut outputs = Vec::new();
+        let mut channels = Vec::new();
+
+        for channel in &explosion.animation.translation_channels {
+            let inputs_offset = inputs.len() as u32;
+            let outputs_offset = outputs.len() as u32;
+            let num_inputs = channel.inputs.len() as u32;
+            let node_index = channel.node_index as u32;
+
+            channels.push(primitives::Channel {
+                inputs_offset,
+                outputs_offset,
+                num_inputs,
+                node_index,
+            });
+
+            inputs.extend_from_slice(&channel.inputs);
+            outputs.extend(
+                channel
+                    .outputs
+                    .iter()
+                    .map(|&vec| primitives::Vec3A::new(vec)),
+            );
+        }
+
+        let bind_group = create_channel_bind_group(
+            &device,
+            "translations",
+            &resources,
+            &inputs,
+            &outputs,
+            &channels,
+        );
+
+        (bind_group, channels.len() as u32)
+    };
+
+    println!("translation channels: {}", num_translation_channels);
 
     let (local_transforms_buffer, animation_bind_group) = create_animation_bind_group(
         &device,
@@ -623,11 +664,11 @@ async fn run() -> anyhow::Result<()> {
                     }
 
                     for (i, transform) in local_transforms.iter().enumerate() {
-                        queue.write_buffer(
-                            &local_transforms_buffer,
-                            (i * std::mem::size_of::<primitives::Similarity>()) as u64,
-                            bytemuck::bytes_of(&transform.translation),
-                        );
+                        //queue.write_buffer(
+                        //    &local_transforms_buffer,
+                        //    (i * std::mem::size_of::<primitives::Similarity>()) as u64,
+                        //    bytemuck::bytes_of(&transform.translation),
+                        //);
                         //queue.write_buffer(
                         //    &local_transforms_buffer,
                         //    (i * std::mem::size_of::<primitives::Similarity>() + std::mem::size_of::<ultraviolet::Vec3>()) as u64,
@@ -651,6 +692,17 @@ async fn run() -> anyhow::Result<()> {
                         encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                             label: Some("compute pass"),
                         });
+
+                    if num_translation_channels > 0 {
+                        compute_pass.set_pipeline(&pipelines.sample_translations_pipeline);
+                        compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                        compute_pass.set_bind_group(1, &sample_translations_bind_group, &[]);
+                        compute_pass.dispatch(
+                            dispatch_count(num_explosions * num_translation_channels, 64),
+                            1,
+                            1,
+                        );
+                    }
 
                     if num_scale_channels > 0 {
                         compute_pass.set_pipeline(&pipelines.sample_scales_pipeline);

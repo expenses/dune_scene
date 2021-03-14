@@ -247,8 +247,8 @@ impl<T: Interpolate> Channel<T> {
 #[derive(Debug)]
 pub struct Animation {
     total_time: f32,
-    translation_channels: Vec<Channel<Vec3>>,
-    rotation_channels: Vec<Channel<Rotor3>>,
+    pub translation_channels: Vec<Channel<Vec3>>,
+    pub rotation_channels: Vec<Channel<Rotor3>>,
     pub scale_channels: Vec<Channel<f32>>,
 }
 

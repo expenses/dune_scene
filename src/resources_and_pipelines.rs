@@ -176,6 +176,7 @@ pub struct Pipelines {
     pub particles_movement_pipeline: wgpu::ComputePipeline,
     pub land_craft_movement_pipeline: wgpu::ComputePipeline,
     pub sample_scales_pipeline: wgpu::ComputePipeline,
+    pub sample_translations_pipeline: wgpu::ComputePipeline,
     pub compute_joint_transforms_pipeline: wgpu::ComputePipeline,
     pub bake_height_map_pipeline: wgpu::RenderPipeline,
     pub explosions_pipeline: wgpu::RenderPipeline,
@@ -635,6 +636,19 @@ impl Pipelines {
                     label: Some("sample scales pipeline"),
                     layout: Some(&animation_sampling_pipeline_layout),
                     module: &cs_sample_scales,
+                    entry_point: "main",
+                })
+            },
+            sample_translations_pipeline: {
+                let cs_sample_translations = wgpu::include_spirv!(
+                    "../shaders/compiled/animation_sample_translations.comp.spv"
+                );
+                let cs_sample_translations = device.create_shader_module(&cs_sample_translations);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("sample translations pipeline"),
+                    layout: Some(&animation_sampling_pipeline_layout),
+                    module: &cs_sample_translations,
                     entry_point: "main",
                 })
             },
