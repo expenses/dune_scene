@@ -51,7 +51,7 @@ async fn run() -> anyhow::Result<()> {
                 label: Some("device"),
                 features: wgpu::Features::empty(),
                 limits: wgpu::Limits {
-                    max_storage_buffers_per_shader_stage: 6,
+                    max_storage_buffers_per_shader_stage: 7,
                     ..Default::default()
                 },
             },
@@ -422,6 +422,13 @@ async fn run() -> anyhow::Result<()> {
             .iter()
             .map(|gt| gt.into_homogeneous_matrix())
             .collect::<Vec<_>>(),
+        &explosion_joints_vec
+            .iter()
+            .map(|&(_, time)| primitives::AnimationState {
+                time,
+                animation_duration: explosion.animation.total_time(),
+            })
+            .collect::<Vec<_>>(),
     );
 
     let position_instances: Vec<_> = (0..num_explosions)
@@ -606,6 +613,7 @@ async fn run() -> anyhow::Result<()> {
 
                     compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
                     compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                    compute_pass.set_bind_group(1, &bind_group, &[]);
                     compute_pass.dispatch(dispatch_count(num_explosions, 64), 1, 1);
 
                     compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
@@ -1173,6 +1181,7 @@ fn create_animation_bind_group(
     joint_indices_to_node_indices: &[u32],
     inverse_bind_matrices: &[Mat4],
     global_transforms: &[Mat4],
+    animation_states: &[primitives::AnimationState],
 ) -> (wgpu::Buffer, wgpu::BindGroup) {
     let num_joints = joint_indices_to_node_indices.len();
     let num_nodes = depth_first_nodes.len();
@@ -1203,6 +1212,12 @@ fn create_animation_bind_group(
         usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::COPY_DST,
         size: (num_nodes * num_instances * std::mem::size_of::<primitives::Similarity>()) as u64,
         mapped_at_creation: false,
+    });
+
+    let animation_states = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("animation states"),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(&animation_states),
     });
 
     let mut full_global_transforms = vec![Mat4::identity(); num_nodes * num_instances];
@@ -1254,18 +1269,22 @@ fn create_animation_bind_group(
             },
             wgpu::BindGroupEntry {
                 binding: 3,
-                resource: global_transforms.as_entire_binding(),
+                resource: animation_states.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 4,
-                resource: depth_first_nodes.as_entire_binding(),
+                resource: global_transforms.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 5,
-                resource: joint_indices_to_node_indices.as_entire_binding(),
+                resource: depth_first_nodes.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 6,
+                resource: joint_indices_to_node_indices.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 7,
                 resource: inverse_bind_matrices.as_entire_binding(),
             },
         ],

@@ -135,9 +135,10 @@ impl RenderResources {
                     uniform(1, wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX),
                     storage(2, wgpu::ShaderStage::COMPUTE, false),
                     storage(3, wgpu::ShaderStage::COMPUTE, false),
-                    storage(4, wgpu::ShaderStage::COMPUTE, true),
+                    storage(4, wgpu::ShaderStage::COMPUTE, false),
                     storage(5, wgpu::ShaderStage::COMPUTE, true),
                     storage(6, wgpu::ShaderStage::COMPUTE, true),
+                    storage(7, wgpu::ShaderStage::COMPUTE, true),
                 ],
             }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
@@ -591,12 +592,13 @@ impl Pipelines {
                 let compute_joint_transforms_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("compute joint transforms pipeline layout"),
-                        bind_group_layouts: &[&resources.animation_bgl],
+                        bind_group_layouts: &[&resources.animation_bgl, &resources.main_bgl],
                         push_constant_ranges: &[],
                     });
 
-                let cs_compute_joint_transforms =
-                    wgpu::include_spirv!("../shaders/compiled/compute_joint_transforms.comp.spv");
+                let cs_compute_joint_transforms = wgpu::include_spirv!(
+                    "../shaders/compiled/animation_compute_joint_transforms.comp.spv"
+                );
                 let cs_compute_joint_transforms =
                     device.create_shader_module(&cs_compute_joint_transforms);
 

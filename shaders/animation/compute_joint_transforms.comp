@@ -1,9 +1,9 @@
 
 #version 450
 
-#include "includes/structs.glsl"
-#include "includes/matrices.glsl"
-#include "includes/rotor.glsl"
+#include "../includes/structs.glsl"
+#include "../includes/matrices.glsl"
+#include "../includes/rotor.glsl"
 
 mat4 similarity_to_mat4(Similarity sim) {
     mat4 scale_matrix = scale_matrix(sim.scale);
@@ -26,20 +26,28 @@ layout(set = 0, binding = 2) readonly buffer LocalTransforms {
     Similarity local_transforms[];
 };
 
-layout(set = 0, binding = 3) buffer GlobalTransforms {
+layout(set = 0, binding = 3) buffer AnimationStates {
+    AnimationState animation_states[];
+};
+
+layout(set = 0, binding = 4) buffer GlobalTransforms {
     mat4 global_transforms[];
 };
 
-layout(set = 0, binding = 4) readonly buffer DepthFirstNodes {
+layout(set = 0, binding = 5) readonly buffer DepthFirstNodes {
     NodeAndParent depth_first_nodes[];
 };
 
-layout(set = 0, binding = 5) readonly buffer JointIndicesToNodeIndices {
+layout(set = 0, binding = 6) readonly buffer JointIndicesToNodeIndices {
     uint joint_indices_to_node_indices[];
 };
 
-layout(set = 0, binding = 6) readonly buffer InverseBindMatrices {
+layout(set = 0, binding = 7) readonly buffer InverseBindMatrices {
     mat4 inverse_bind_matrices[];
+};
+
+layout(set = 1, binding = 4) uniform TimeBuffer {
+    Time time;
 };
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -75,4 +83,7 @@ void main() {
 
         joint_transforms[joints_offset + joint_index] = global_transform * inverse_bind_matrix;
     }
+
+    AnimationState state = animation_states[index];
+    animation_states[index].time = mod(state.time + time.delta_time, state.animation_duration);
 }

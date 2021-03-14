@@ -42,43 +42,19 @@ vec3 cublic_spline_interpolate(
         + m1 * (t3 - t2);
 }
 
-const uint max_size = 400000;
-
-// todo: linear search is simpler and thus we should replace this with that until working, then test.
-// todo: use int for -1.
-uint binary_search(float t, Channel channel) {
-    uint size = channel.size;
+void sample_cubic_spline_float(float t, Channel channel, out SAMPLE_TYPE output_sample, out bool invalid) {
     uint base = channel.offset;
+    uint size = channel.size;
 
     if (t < CHANNEL_INPUTS[base] || t > CHANNEL_INPUTS[base + size - 1]) {
-        return max_size;
+        invalid = true;
+        return;
     }
 
-    while (size > 1) {
-        uint half_size = size / 2;
-        uint mid = base + half_size;
+    uint i = base;
 
-        if (CHANNEL_INPUTS[mid] <= t) {
-            base = mid;
-        }
-        // In case everything is working, switch to branchless:
-        // base += uint(CHANNEL_INPUTS[mid] <= t) * (mid - base);
-
-        size -= half_size;
-    }
-
-    if (CHANNEL_INPUTS[base] == t) {
-        return base;
-    } else {
-        return base + uint(CHANNEL_INPUTS[base] < t) - 1;
-    }
-}
-
-SAMPLE_TYPE sample_cubic_spline_float(float t, Channel channel) {
-    uint i = binary_search(t, channel);
-
-    if (i == max_size) {
-        return INVALID;
+    while (i < base + size && CHANNEL_INPUTS[i + 1] < t) {
+        i++;
     }
 
     SAMPLE_TYPE previous_time = CHANNEL_INPUTS[i];
@@ -93,7 +69,7 @@ SAMPLE_TYPE sample_cubic_spline_float(float t, Channel channel) {
     SAMPLE_TYPE ending_in_tangent = CHANNEL_OUTPUTS[i * 3 + 3];
     SAMPLE_TYPE ending_point = CHANNEL_OUTPUTS[i * 3 + 4];
 
-    return cublic_spline_interpolate(
+    output_sample = cublic_spline_interpolate(
         starting_point,
         starting_out_tangent,
         ending_point,
@@ -101,4 +77,6 @@ SAMPLE_TYPE sample_cubic_spline_float(float t, Channel channel) {
         delta,
         factor
     );
+
+    return;
 }

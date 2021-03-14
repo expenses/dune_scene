@@ -91,3 +91,8 @@ struct NodeAndParent {
     uint node_index;
     int parent_index;
 };
+
+struct AnimationState {
+    float time;
+    float animation_duration;
+};

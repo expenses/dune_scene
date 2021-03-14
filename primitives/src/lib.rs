@@ -199,3 +199,10 @@ pub struct Rotor {
     pub bv: Vec3,
     pub s: f32,
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct AnimationState {
+    pub time: f32,
+    pub animation_duration: f32,
+}
