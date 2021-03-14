@@ -69,35 +69,3 @@ Rotor cublic_spline_interpolate(
 
     return rotor_normalize(sum);
 }
-
-
-SAMPLE_TYPE sample_cubic_spline(float t, Channel channel, out bool invalid) {
-    invalid = t < CHANNEL_INPUTS[channel.inputs_offset] || t > CHANNEL_INPUTS[channel.inputs_offset + channel.num_inputs - 1];
-
-    uint i = 0;
-
-    while (i < channel.num_inputs && CHANNEL_INPUTS[channel.inputs_offset + i + 1] < t) {
-        i++;
-    }
-
-    float previous_time = CHANNEL_INPUTS[channel.inputs_offset + i];
-    float next_time = CHANNEL_INPUTS[channel.inputs_offset + i + 1];
-    float delta = next_time - previous_time;
-    float from_start = t - previous_time;
-    float factor = from_start / delta;
-
-    SAMPLE_TYPE starting_point = CHANNEL_OUTPUTS[channel.outputs_offset + i * 3 + 1];
-    SAMPLE_TYPE starting_out_tangent = CHANNEL_OUTPUTS[channel.outputs_offset + i * 3 + 2];
-
-    SAMPLE_TYPE ending_in_tangent = CHANNEL_OUTPUTS[channel.outputs_offset + i * 3 + 3];
-    SAMPLE_TYPE ending_point = CHANNEL_OUTPUTS[channel.outputs_offset + i * 3 + 4];
-
-    return cublic_spline_interpolate(
-        starting_point,
-        starting_out_tangent,
-        ending_point,
-        ending_in_tangent,
-        delta,
-        factor
-    );
-}
