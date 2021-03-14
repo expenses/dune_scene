@@ -203,9 +203,9 @@ async fn run() -> anyhow::Result<()> {
     let land_craft_bytes = include_bytes!("../models/landcraft.glb");
     let land_craft = model_loading::LandCraft::load(land_craft_bytes, &device, &queue, &resources)?;
 
-    let explosion_bytes = include_bytes!("../models/explosion.glb");
-    let explosion =
-        model_loading::AnimatedModel::load(explosion_bytes, &device, &queue, &resources)?;
+    let animated_model_bytes = include_bytes!("../models/mouse.glb");
+    let animated_model =
+        model_loading::AnimatedModel::load(animated_model_bytes, &device, &queue, &resources)?;
 
     // Now we can create a window.
 
@@ -395,20 +395,24 @@ async fn run() -> anyhow::Result<()> {
         &device,
         "scales",
         &resources,
-        explosion.animation.scale_channels.iter().map(|channel| {
-            (
-                channel.inputs.clone(),
-                channel.outputs.clone(),
-                channel.node_index as u32,
-            )
-        }),
+        animated_model
+            .animation
+            .scale_channels
+            .iter()
+            .map(|channel| {
+                (
+                    channel.inputs.clone(),
+                    channel.outputs.clone(),
+                    channel.node_index as u32,
+                )
+            }),
     );
 
     let (sample_translations_bind_group, num_translation_channels) = create_channel_bind_group(
         &device,
         "translations",
         &resources,
-        explosion
+        animated_model
             .animation
             .translation_channels
             .iter()
@@ -427,7 +431,7 @@ async fn run() -> anyhow::Result<()> {
         &device,
         "rotations",
         &resources,
-        explosion
+        animated_model
             .animation
             .rotation_channels
             .iter()
@@ -447,20 +451,20 @@ async fn run() -> anyhow::Result<()> {
             }),
     );
 
-    let num_explosions = 50;
+    let num_animated_models = 50;
 
-    let explosion_animation_states: Vec<_> = (0..num_explosions)
+    let animated_model_animation_states: Vec<_> = (0..num_animated_models)
         .map(|_| primitives::AnimationState {
-            time: rng.gen_range(0.0..=explosion.animation.total_time),
-            animation_duration: explosion.animation.total_time,
+            time: rng.gen_range(0.0..=animated_model.animation.total_time),
+            animation_duration: animated_model.animation.total_time,
         })
         .collect();
 
     let animation_bind_group = create_animation_bind_group(
         &device,
         &resources,
-        num_explosions as usize,
-        &explosion
+        num_animated_models as usize,
+        &animated_model
             .depth_first_nodes
             .iter()
             .map(|(node_index, parent_index)| primitives::NodeAndParent {
@@ -468,17 +472,17 @@ async fn run() -> anyhow::Result<()> {
                 parent_index: parent_index.map(|p| p as i32).unwrap_or(-1),
             })
             .collect::<Vec<_>>(),
-        &explosion
+        &animated_model
             .joint_indices_to_node_indices
             .iter()
             .map(|index| *index as u32)
             .collect::<Vec<_>>(),
-        &explosion.inverse_bind_matrices,
-        &explosion.initial_local_transforms,
-        &explosion_animation_states,
+        &animated_model.inverse_bind_matrices,
+        &animated_model.initial_local_transforms,
+        &animated_model_animation_states,
     );
 
-    let position_instances: Vec<_> = (0..num_explosions)
+    let position_instances: Vec<_> = (0..num_animated_models)
         .map(|_| {
             Vec3::new(
                 rng.gen_range(-2.0..=2.0),
@@ -642,7 +646,10 @@ async fn run() -> anyhow::Result<()> {
                                     &[],
                                 );
                                 compute_pass.dispatch(
-                                    dispatch_count(num_explosions * num_translation_channels, 64),
+                                    dispatch_count(
+                                        num_animated_models * num_translation_channels,
+                                        64,
+                                    ),
                                     1,
                                     1,
                                 );
@@ -661,7 +668,7 @@ async fn run() -> anyhow::Result<()> {
                                 compute_pass.set_bind_group(0, &animation_bind_group, &[]);
                                 compute_pass.set_bind_group(1, &sample_scales_bind_group, &[]);
                                 compute_pass.dispatch(
-                                    dispatch_count(num_explosions * num_scale_channels, 64),
+                                    dispatch_count(num_animated_models * num_scale_channels, 64),
                                     1,
                                     1,
                                 );
@@ -680,7 +687,7 @@ async fn run() -> anyhow::Result<()> {
                                 compute_pass.set_bind_group(0, &animation_bind_group, &[]);
                                 compute_pass.set_bind_group(1, &sample_rotations_bind_group, &[]);
                                 compute_pass.dispatch(
-                                    dispatch_count(num_explosions * num_rotation_channels, 64),
+                                    dispatch_count(num_animated_models * num_rotation_channels, 64),
                                     1,
                                     1,
                                 );
@@ -697,7 +704,7 @@ async fn run() -> anyhow::Result<()> {
                             compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
                             compute_pass.set_bind_group(0, &animation_bind_group, &[]);
                             compute_pass.set_bind_group(1, &bind_group, &[]);
-                            compute_pass.dispatch(dispatch_count(num_explosions, 64), 1, 1);
+                            compute_pass.dispatch(dispatch_count(num_animated_models, 64), 1, 1);
                         }
                     );
 
@@ -797,14 +804,18 @@ async fn run() -> anyhow::Result<()> {
                         ),
                     });
 
-                    render_pass.set_pipeline(&pipelines.explosions_pipeline);
+                    render_pass.set_pipeline(&pipelines.animated_model_pipeline);
                     render_pass.set_bind_group(0, &bind_group, &[]);
-                    render_pass.set_bind_group(1, &explosion.texture_bind_group, &[]);
+                    render_pass.set_bind_group(1, &animated_model.texture_bind_group, &[]);
                     render_pass.set_bind_group(2, &animation_bind_group, &[]);
-                    render_pass.set_vertex_buffer(0, explosion.vertices.slice(..));
+                    render_pass.set_vertex_buffer(0, animated_model.vertices.slice(..));
                     render_pass.set_vertex_buffer(1, position_instances_buffer.slice(..));
-                    render_pass.set_index_buffer(explosion.indices.slice(..), INDEX_FORMAT);
-                    render_pass.draw_indexed(0..explosion.num_indices, 0, 0..num_explosions);
+                    render_pass.set_index_buffer(animated_model.indices.slice(..), INDEX_FORMAT);
+                    render_pass.draw_indexed(
+                        0..animated_model.num_indices,
+                        0,
+                        0..num_animated_models,
+                    );
 
                     if render_ships {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);

@@ -181,7 +181,7 @@ pub struct Pipelines {
     pub sample_rotations_pipeline: wgpu::ComputePipeline,
     pub compute_joint_transforms_pipeline: wgpu::ComputePipeline,
     pub bake_height_map_pipeline: wgpu::RenderPipeline,
-    pub explosions_pipeline: wgpu::RenderPipeline,
+    pub animated_model_pipeline: wgpu::RenderPipeline,
 }
 
 impl Pipelines {
@@ -693,10 +693,10 @@ impl Pipelines {
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
-            explosions_pipeline: {
-                let explosions_pipeline_layout =
+            animated_model_pipeline: {
+                let animated_model_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("explosions pipeline layout"),
+                        label: Some("animated model pipeline layout"),
                         bind_group_layouts: &[
                             &resources.main_bgl,
                             &resources.single_texture_bgl,
@@ -705,19 +705,19 @@ impl Pipelines {
                         push_constant_ranges: &[],
                     });
 
-                let vs_explosions =
-                    wgpu::include_spirv!("../shaders/compiled/explosions_shader.vert.spv");
-                let vs_explosions = device.create_shader_module(&vs_explosions);
+                let vs_animated_model =
+                    wgpu::include_spirv!("../shaders/compiled/animated_model_shader.vert.spv");
+                let vs_animated_model = device.create_shader_module(&vs_animated_model);
 
-                let fs_explosions =
-                    wgpu::include_spirv!("../shaders/compiled/explosions_shader.frag.spv");
-                let fs_explosions = device.create_shader_module(&fs_explosions);
+                let fs_animated_model =
+                    wgpu::include_spirv!("../shaders/compiled/animated_model_shader.frag.spv");
+                let fs_animated_model = device.create_shader_module(&fs_animated_model);
 
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("explosions pipeline"),
-                    layout: Some(&explosions_pipeline_layout),
+                    label: Some("animated model pipeline"),
+                    layout: Some(&animated_model_pipeline_layout),
                     vertex: wgpu::VertexState {
-                        module: &vs_explosions,
+                        module: &vs_animated_model,
                         entry_point: "main",
                         buffers: &[
                             animated_vertex_buffer_layout.clone(),
@@ -725,7 +725,7 @@ impl Pipelines {
                         ],
                     },
                     fragment: Some(wgpu::FragmentState {
-                        module: &fs_explosions,
+                        module: &fs_animated_model,
                         entry_point: "main",
                         targets: &[FRAMEBUFFER_FORMAT.into()],
                     }),
