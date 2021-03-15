@@ -293,7 +293,8 @@ async fn run() -> anyhow::Result<()> {
             style,
         });
 
-    let mut egui_renderpass = egui_wgpu_backend::RenderPass::new(&device, display_format);
+    let mut egui_renderpass =
+        egui_wgpu_backend::RenderPass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
 
     let mut swap_chain_descriptor = wgpu::SwapChainDescriptor {
         usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
@@ -393,6 +394,28 @@ async fn run() -> anyhow::Result<()> {
                 resource: wgpu::BindingResource::TextureView(&height_map_texture),
             },
         ],
+    });
+
+    // As zooming in/out crashes firefox with webgpu, we don't need to recreate these :^)
+
+    #[cfg(feature = "wasm")]
+    let ui_framebuffer = create_texture(
+        &device,
+        "ui framebuffer texture",
+        width,
+        height,
+        wgpu::TextureFormat::Bgra8UnormSrgb,
+        wgpu::TextureUsage::RENDER_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
+    );
+
+    #[cfg(feature = "wasm")]
+    let ui_framebuffer_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("ui framebuffer bind group"),
+        layout: &resources.single_texture_bgl,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::TextureView(&ui_framebuffer),
+        }],
     });
 
     let mut render_sun_dir = false;
@@ -795,11 +818,39 @@ async fn run() -> anyhow::Result<()> {
                     // Record all render passes.
                     egui_renderpass.execute(
                         &mut encoder,
+                        #[cfg(feature = "wasm")]
+                        &ui_framebuffer,
+                        #[cfg(not(feature = "wasm"))]
                         &frame.output.view,
                         &paint_jobs,
                         &screen_descriptor,
+                        #[cfg(feature = "wasm")]
+                        Some(wgpu::Color::TRANSPARENT),
+                        #[cfg(not(feature = "wasm"))]
                         None,
                     );
+
+                    #[cfg(feature = "wasm")]
+                    {
+                        let mut render_pass =
+                            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                label: Some("blit ui render pass"),
+                                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                                    attachment: &frame.output.view,
+                                    resolve_target: None,
+                                    ops: wgpu::Operations {
+                                        load: wgpu::LoadOp::Load,
+                                        store: true,
+                                    },
+                                }],
+                                depth_stencil_attachment: None,
+                            });
+
+                        render_pass.set_pipeline(&pipelines.blit_to_srgb_pipeline);
+                        render_pass.set_bind_group(0, &bind_group, &[]);
+                        render_pass.set_bind_group(1, &ui_framebuffer_bind_group, &[]);
+                        render_pass.draw(0..3, 0..1);
+                    }
 
                     queue.submit(Some(encoder.finish()));
                 }
