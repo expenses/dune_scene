@@ -14,7 +14,7 @@ ultraviolet = "0.7.5"
 wgpu = "0.7.0"
 winit = "0.24.0"
 env_logger = { version = "0.8.3", default-features = false, features = ["humantime", "atty", "termcolor"] }
-egui_wgpu_backend = { git = "https://github.com/hasenbanck/egui_wgpu_backend" }
+egui_wgpu_backend = { git = "https://github.com/expenses/egui_wgpu_backend", branch = "wasm-hack" }
 egui_winit_platform = { git = "https://github.com/hasenbanck/egui_winit_platform" }
 egui = "0.10.0"
 rand = "0.8.3"
