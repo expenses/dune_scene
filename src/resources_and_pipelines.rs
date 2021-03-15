@@ -12,6 +12,7 @@ pub struct RenderResources {
     pub particles_bgl: wgpu::BindGroupLayout,
     pub land_craft_bgl: wgpu::BindGroupLayout,
     pub sampler: wgpu::Sampler,
+    pub clamp_sampler: wgpu::Sampler,
 }
 
 impl RenderResources {
@@ -65,9 +66,10 @@ impl RenderResources {
                 entries: &[
                     uniform(0, wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::COMPUTE),
                     uniform(1, wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT),
-                    sampler(2, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::COMPUTE),
+                    sampler(2, wgpu::ShaderStage::FRAGMENT),
                     uniform(3, wgpu::ShaderStage::FRAGMENT | wgpu::ShaderStage::COMPUTE),
                     uniform(4, wgpu::ShaderStage::all()),
+                    sampler(5, wgpu::ShaderStage::COMPUTE),
                 ],
             }),
             single_texture_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -129,6 +131,12 @@ impl RenderResources {
                 min_filter: wgpu::FilterMode::Linear,
                 address_mode_u: wgpu::AddressMode::Repeat,
                 address_mode_v: wgpu::AddressMode::Repeat,
+                ..Default::default()
+            }),
+            clamp_sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("clamp sampler"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
             }),
         }
