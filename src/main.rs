@@ -266,29 +266,34 @@ async fn run() -> anyhow::Result<()> {
 
     let pipelines = Pipelines::new(&device, display_format, &resources, &cascaded_shadow_maps);
 
-    #[cfg(not(feature = "wasm"))]
-    let mut imgui = imgui::Context::create();
-    #[cfg(not(feature = "wasm"))]
-    let mut imgui_platform = imgui_winit_support::WinitPlatform::init(&mut imgui);
-    #[cfg(not(feature = "wasm"))]
-    imgui_platform.attach_window(
-        imgui.io_mut(),
-        &window,
-        imgui_winit_support::HiDpiMode::Default,
-    );
-    #[cfg(not(feature = "wasm"))]
-    imgui.set_ini_filename(None);
+    const BACKGROUND: egui::Color32 = egui::Color32::from_rgba_premultiplied(64, 0, 0, 224);
+    const INACTIVE: egui::Color32 = egui::Color32::from_rgba_premultiplied(48, 0, 0, 224);
+    const ACTIVE: egui::Color32 = egui::Color32::from_rgba_premultiplied(64, 0, 0, 224);
+    const HIGHLIGHT: egui::Color32 = egui::Color32::from_rgba_premultiplied(255, 224, 224, 224);
 
-    #[cfg(not(feature = "wasm"))]
-    let mut imgui_renderer = imgui_wgpu::Renderer::new(
-        &mut imgui,
-        &device,
-        &queue,
-        imgui_wgpu::RendererConfig {
-            texture_format: display_format,
-            ..Default::default()
-        },
-    );
+    let active_stroke = egui::Stroke::new(1.0, ACTIVE);
+    let highlight_stroke = egui::Stroke::new(1.0, HIGHLIGHT);
+    let white_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+
+    let mut style = egui::style::Style::default();
+    style.visuals.widgets.noninteractive.bg_fill = BACKGROUND;
+    style.visuals.widgets.noninteractive.fg_stroke = white_stroke;
+    style.visuals.widgets.noninteractive.bg_stroke = active_stroke;
+    style.visuals.widgets.inactive.bg_fill = INACTIVE;
+    style.visuals.widgets.hovered.bg_fill = ACTIVE;
+    style.visuals.widgets.hovered.bg_stroke = highlight_stroke;
+    style.visuals.widgets.active.bg_fill = ACTIVE;
+
+    let mut egui_platform =
+        egui_winit_platform::Platform::new(egui_winit_platform::PlatformDescriptor {
+            physical_width: width as u32,
+            physical_height: height as u32,
+            scale_factor: window.scale_factor(),
+            font_definitions: Default::default(),
+            style,
+        });
+
+    let mut egui_renderpass = egui_wgpu_backend::RenderPass::new(&device, display_format);
 
     let mut swap_chain_descriptor = wgpu::SwapChainDescriptor {
         usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
@@ -403,8 +408,7 @@ async fn run() -> anyhow::Result<()> {
     let mut mouse_down = false;
 
     event_loop.run(move |event, _, control_flow| {
-        #[cfg(not(feature = "wasm"))]
-        imgui_platform.handle_event(imgui.io_mut(), &window, &event);
+        egui_platform.handle_event(&event);
 
         match event {
             Event::WindowEvent { ref event, .. } => match event {
@@ -479,7 +483,10 @@ async fn run() -> anyhow::Result<()> {
                     let position = position.to_logical::<f32>(window.scale_factor());
                     let position = Vec2::new(position.x, position.y);
 
-                    if mouse_down {
+                    if mouse_down
+                        && !egui_platform.context().is_pointer_over_area()
+                        && !egui_platform.context().is_using_pointer()
+                    {
                         let delta = position - previous_cursor_position;
                         scene.orbit.rotate(delta);
 
@@ -511,6 +518,8 @@ async fn run() -> anyhow::Result<()> {
                             delta_time,
                         }),
                     );
+
+                    egui_platform.update_time(1.0 / 60.0);
 
                     let mut encoder =
                         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -683,41 +692,10 @@ async fn run() -> anyhow::Result<()> {
 
                     drop(render_pass);
 
-                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("lines render pass"),
-                        color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                            attachment: &frame.output.view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Load,
-                                store: true,
-                            },
-                        }],
-                        depth_stencil_attachment: Some(
-                            wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                                attachment: &depth_texture,
-                                depth_ops: Some(wgpu::Operations {
-                                    load: wgpu::LoadOp::Load,
-                                    store: true,
-                                }),
-                                stencil_ops: None,
-                            },
-                        ),
-                    });
-
                     if render_sun_dir {
-                        render_pass.set_pipeline(&pipelines.sun_dir_pipeline);
-                        render_pass.set_bind_group(0, &bind_group, &[]);
-                        render_pass.draw(0..2, 0..1);
-                    }
-
-                    drop(render_pass);
-
-                    #[cfg(not(feature = "wasm"))]
-                    {
                         let mut render_pass =
                             encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                label: Some("ui render pass"),
+                                label: Some("lines render pass"),
                                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                                     attachment: &frame.output.view,
                                     resolve_target: None,
@@ -726,17 +704,29 @@ async fn run() -> anyhow::Result<()> {
                                         store: true,
                                     },
                                 }],
-                                depth_stencil_attachment: None,
+                                depth_stencil_attachment: Some(
+                                    wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                                        attachment: &depth_texture,
+                                        depth_ops: Some(wgpu::Operations {
+                                            load: wgpu::LoadOp::Load,
+                                            store: true,
+                                        }),
+                                        stencil_ops: None,
+                                    },
+                                ),
                             });
 
-                        imgui_platform
-                            .prepare_frame(imgui.io_mut(), &window)
-                            .expect("Failed to prepare frame");
-                        let ui = imgui.frame();
+                        render_pass.set_pipeline(&pipelines.sun_dir_pipeline);
+                        render_pass.set_bind_group(0, &bind_group, &[]);
+                        render_pass.draw(0..2, 0..1);
+                    }
 
-                        {
+                    egui_platform.begin_frame();
+                    egui::containers::Window::new("Controls").show(
+                        &egui_platform.context(),
+                        |ui| {
                             let dirty = draw_ui(
-                                &ui,
+                                ui,
                                 &mut settings,
                                 &mut tonemapper_params,
                                 &mut render_sun_dir,
@@ -747,7 +737,11 @@ async fn run() -> anyhow::Result<()> {
                             );
 
                             if dirty.settings {
-                                queue.write_buffer(&settings_buffer, 0, bytemuck::bytes_of(&settings));
+                                queue.write_buffer(
+                                    &settings_buffer,
+                                    0,
+                                    bytemuck::bytes_of(&settings),
+                                );
                             }
 
                             if dirty.tonemapper {
@@ -774,13 +768,38 @@ async fn run() -> anyhow::Result<()> {
                                     scene.sun_facing,
                                     &queue,
                                 );
-                            }
+                            };
+                        },
+                    );
+                    let (_output, paint_commands) = egui_platform.end_frame();
+                    let paint_jobs = egui_platform.context().tessellate(paint_commands);
 
-                            imgui_renderer
-                                .render(ui.render(), &queue, &device, &mut render_pass)
-                                .expect("Rendering failed");
-                        }
-                    }
+                    let screen_descriptor = egui_wgpu_backend::ScreenDescriptor {
+                        physical_width: swap_chain_descriptor.width,
+                        physical_height: swap_chain_descriptor.height,
+                        scale_factor: window.scale_factor() as f32,
+                    };
+                    egui_renderpass.update_texture(
+                        &device,
+                        &queue,
+                        &egui_platform.context().texture(),
+                    );
+                    egui_renderpass.update_user_textures(&device, &queue);
+                    egui_renderpass.update_buffers(
+                        &device,
+                        &queue,
+                        &paint_jobs,
+                        &screen_descriptor,
+                    );
+
+                    // Record all render passes.
+                    egui_renderpass.execute(
+                        &mut encoder,
+                        &frame.output.view,
+                        &paint_jobs,
+                        &screen_descriptor,
+                        None,
+                    );
 
                     queue.submit(Some(encoder.finish()));
                 }
@@ -893,9 +912,8 @@ impl TonemapperParams {
     }
 }
 
-#[cfg(not(feature = "wasm"))]
 fn draw_ui(
-    ui: &imgui::Ui,
+    ui: &mut egui::Ui,
     settings: &mut primitives::Settings,
     tonemapper_params: &mut TonemapperParams,
     render_sun_dir: &mut bool,
@@ -906,87 +924,112 @@ fn draw_ui(
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
 
-    let mut base_colour: [f32; 3] = settings.base_colour.into();
+    // todo: re-enable with a newer egui version.
+    /*
+    let mut base_colour = egui::color::Hsva::from_rgb(settings.base_colour.into());
+    use egui::widgets::color_picker::Alpha;
 
-    if imgui::ColorPicker::new(imgui::im_str!("Colour"), &mut base_colour).build(&ui) {
-        settings.base_colour = base_colour.into();
+    let response = egui::widgets::color_picker::color_edit_button_hsva(ui, &mut base_colour, Alpha::Opaque);
+
+    if response.changed() || response.changed() {
+        settings.base_colour = base_colour.to_rgb().into();
         dirty.settings = true;
     }
+    */
 
-    let mut ambient_lighting: [f32; 3] = settings.ambient_lighting.into();
+    dirty.settings |= ui
+        .add(
+            egui::widgets::Slider::f32(&mut settings.detail_map_scale, 0.0..=10.0)
+                .text("Detail Map Scale"),
+        )
+        .changed();
 
-    if imgui::ColorPicker::new(imgui::im_str!("Ambient Lighting"), &mut ambient_lighting).build(&ui)
-    {
-        settings.ambient_lighting = ambient_lighting.into();
-        dirty.settings = true;
-    }
+    dirty.settings |= ui
+        .add(
+            egui::widgets::Slider::f32(&mut settings.roughness, 0.0..=1.0)
+                .text("Ground Specular Roughness"),
+        )
+        .changed();
 
-    dirty.settings |= imgui::Drag::new(imgui::im_str!("Detail Scale"))
-        .range(0.0..=10.0)
-        .speed(0.05)
-        .build(&ui, &mut settings.detail_map_scale);
-
-    dirty.settings |= imgui::Drag::new(imgui::im_str!("Roughness"))
-        .range(0.0..=1.0)
-        .speed(0.005)
-        .build(&ui, &mut settings.roughness);
-
-    dirty.settings |= imgui::Drag::new(imgui::im_str!("Specular Factor"))
-        .range(0.0..=2.0)
-        .speed(0.005)
-        .build(&ui, &mut settings.specular_factor);
+    dirty.settings |= ui
+        .add(
+            egui::widgets::Slider::f32(&mut settings.specular_factor, 0.0..=2.0)
+                .text("Ground Specular Multiplier"),
+        )
+        .changed();
 
     for (mode, index) in primitives::Mode::iter() {
-        dirty.settings |= ui.radio_button(&imgui::im_str!("{:?}", mode), &mut settings.mode, index);
+        dirty.settings |= ui
+            .radio_value(&mut settings.mode, index, format!("{:?}", mode))
+            .changed();
     }
 
-    ui.checkbox(imgui::im_str!("Render Sun Direction"), render_sun_dir);
-    ui.checkbox(imgui::im_str!("Move Vehicles"), move_vehicles);
-    ui.checkbox(imgui::im_str!("Render Ships"), render_ships);
-    ui.checkbox(imgui::im_str!("Render Ship Shadows"), render_ship_shadows);
+    ui.checkbox(render_sun_dir, "Render Sun Direction");
+    ui.checkbox(move_vehicles, "Move Vehicles");
+    ui.checkbox(render_ships, "Render Ships");
+    ui.checkbox(render_ship_shadows, "Render Ship Shadows");
 
-    dirty.csm |= imgui::Drag::new(&imgui::im_str!("Cascade Split Lambda"))
-        .range(0.0..=1.0)
-        .speed(0.01)
-        .build(&ui, cascade_split_lambda);
+    dirty.csm |= ui
+        .add(
+            egui::widgets::Slider::f32(cascade_split_lambda, 0.0..=1.0)
+                .text("Cascade Split Lambda"),
+        )
+        .changed();
 
-    dirty.settings |= imgui::Drag::new(imgui::im_str!("Ship Movement Bounds"))
-        .range(0.0..=2.5)
-        .speed(0.01)
-        .build(&ui, &mut settings.ship_movement_bounds);
+    dirty.settings |= ui
+        .add(
+            egui::widgets::Slider::f32(&mut settings.ship_movement_bounds, 0.0..=2.5)
+                .text("Ship Movement Bounds"),
+        )
+        .changed();
 
     for mode in primitives::TonemapperMode::iter() {
-        dirty.tonemapper |= ui.radio_button(
-            &imgui::im_str!("Tonemapper {:?}", mode),
-            &mut tonemapper_params.mode,
-            mode,
-        );
+        dirty.tonemapper |= ui
+            .radio_value(
+                &mut tonemapper_params.mode,
+                mode,
+                format!("Tonemapper {:?}", mode),
+            )
+            .changed();
     }
 
-    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Toe"))
-        .range(1.0..=3.0)
-        .speed(0.005)
-        .build(&ui, &mut tonemapper_params.toe);
+    dirty.tonemapper |= ui
+        .add(
+            egui::widgets::Slider::f32(&mut tonemapper_params.toe, 1.0..=3.0)
+                .text("Tonemapper - Toe"),
+        )
+        .changed();
 
-    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Shoulder"))
-        .range(0.5..=2.0)
-        .speed(0.005)
-        .build(&ui, &mut tonemapper_params.shoulder);
+    dirty.tonemapper |= ui
+        .add(
+            egui::widgets::Slider::f32(&mut tonemapper_params.shoulder, 0.5..=2.0)
+                .text("Tonemapper - Shoulder"),
+        )
+        .changed();
 
-    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Max Luminance"))
-        .range(0.0..=30.0)
-        .speed(0.1)
-        .build(&ui, &mut tonemapper_params.max_luminance);
+    dirty.tonemapper |= ui
+        .add(
+            egui::widgets::Slider::f32(&mut tonemapper_params.max_luminance, 0.0..=30.0)
+                .text("Tonemapper - Max Luminance"),
+        )
+        .changed();
 
-    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Grey In"))
-        .range(0.0..=tonemapper_params.max_luminance / 2.0)
-        .speed(0.05)
-        .build(&ui, &mut tonemapper_params.grey_in);
+    dirty.tonemapper |= ui
+        .add(
+            egui::widgets::Slider::f32(
+                &mut tonemapper_params.grey_in,
+                0.0..=tonemapper_params.max_luminance,
+            )
+            .text("Tonemapper - Grey In"),
+        )
+        .changed();
 
-    dirty.tonemapper |= imgui::Drag::new(imgui::im_str!("Tonemapper - Grey Out"))
-        .range(0.0..=0.5)
-        .speed(0.005)
-        .build(&ui, &mut tonemapper_params.grey_out);
+    dirty.tonemapper |= ui
+        .add(
+            egui::widgets::Slider::f32(&mut tonemapper_params.grey_out, 0.0..=0.5)
+                .text("Tonemapper - Grey Out"),
+        )
+        .changed();
 
     dirty
 }
