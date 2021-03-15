@@ -8,7 +8,7 @@ layout(set = 0, binding = 4) uniform TimeBuffer {
     Time time;
 };
 
-layout(set = 0, binding = 2) uniform sampler u_sampler;
+layout(set = 0, binding = 5) uniform sampler clamp_sampler;
 
 layout(set = 1, binding = 0) buffer LandCraftBuffer {
     LandCraft crafts[];
@@ -37,7 +37,7 @@ const float SCENE_SIZE = 4.0;
 
 float sample_height(vec2 pos) {
     vec2 uv = pos / SCENE_SIZE + 0.5;
-    return textureLod(sampler2D(height_map, u_sampler), uv, 0).r;
+    return textureLod(sampler2D(height_map, clamp_sampler), uv, 0).r;
 }
 
 // We do things this way to avoid atan/atan2 which are slow and maybe branchy.
@@ -50,6 +50,7 @@ vec2 calculate_sine_and_cosine(float opposite, float adjacent) {
 
 const vec3 SMOKE_STACK_OFFSET = vec3(-0.5, 3.0, 0.0) * 0.02;
 const float SAND_PARTICLE_SPAWN_COOLDOWN = 0.1;
+const float SAND_PARTICLES_PER_FRAME = 60.0 * SAND_PARTICLE_SPAWN_COOLDOWN;
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -123,6 +124,6 @@ void main() {
         smoke_particles_info.offset += crafts.length();
         // Just in case the number of crafts / particles has changed.
         smoke_particles_info.particle_duration = (smoke_particles.length() / crafts.length()) / 60.0;
-        sand_particles_info.particle_duration = (sand_particles.length() / crafts.length()) / 60.0 * (60.0 * SAND_PARTICLE_SPAWN_COOLDOWN);
+        sand_particles_info.particle_duration = ((sand_particles.length() / crafts.length()) / 60.0) * SAND_PARTICLES_PER_FRAME;
     }
 }

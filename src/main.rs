@@ -113,7 +113,7 @@ async fn run() -> anyhow::Result<()> {
 
     let mut rng = rand::thread_rng();
 
-    let num_ships = 100;
+    let num_ships = 200;
     let ship_positions: Vec<_> = (0..num_ships)
         .map(|_| primitives::Ship {
             position: Vec3::new(
@@ -153,7 +153,7 @@ async fn run() -> anyhow::Result<()> {
         &resources,
     );
 
-    let num_land_craft = 200;
+    let num_land_craft = 400;
     let land_craft: Vec<_> = (0..num_land_craft)
         .map(|_| primitives::LandCraft {
             position: Vec3::new(rng.gen_range(-2.0..=2.0), 0.0, rng.gen_range(-2.0..=2.0)),
@@ -262,6 +262,10 @@ async fn run() -> anyhow::Result<()> {
             wgpu::BindGroupEntry {
                 binding: 4,
                 resource: time_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: wgpu::BindingResource::Sampler(&resources.clamp_sampler),
             },
         ],
     });
