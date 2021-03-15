@@ -21,6 +21,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
 
 [[package]]
+name = "ahash"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "796540673305a66d127804eef19ad696f1f204b8c1025aaca4958c17eab32877"
+dependencies = [
+ "getrandom",
+ "once_cell",
+ "version_check",
+]
+
+[[package]]
 name = "andrew"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -53,6 +64,12 @@ checksum = "c69a8137596e84c22d57f3da1b5de1d4230b1742a710091c85f4d7ce50f00f38"
 dependencies = [
  "libloading 0.6.7",
 ]
+
+[[package]]
+name = "atomic_refcell"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bc31dce067eab974c815a9deb95f6217806de7b53685d7fc31f8ccf3fb2539f"
 
 [[package]]
 name = "atty"
@@ -175,12 +192,6 @@ name = "cfg_aliases"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
-
-[[package]]
-name = "chlorine"
-version = "1.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd650552110e39b7c5058986cf177decd3365841836578ac50a286094eac0be6"
 
 [[package]]
 name = "cocoa"
@@ -420,12 +431,12 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "cascaded-shadow-maps",
+ "egui",
+ "egui_wgpu_backend",
+ "egui_winit_platform",
  "env_logger",
  "gltf",
  "image",
- "imgui",
- "imgui-wgpu",
- "imgui-winit-support",
  "pollster",
  "primitives",
  "rand",
@@ -433,6 +444,42 @@ dependencies = [
  "wgpu",
  "winit",
 ]
+
+[[package]]
+name = "egui"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f550e7f51023f5ea92eae420fae368a52927deed22dcbefc7c22c140b02d7b4"
+dependencies = [
+ "epaint",
+]
+
+[[package]]
+name = "egui_wgpu_backend"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d5e59a1e3b9e52e90598e3a1c868068d0bbcb74261bec9b664f76ae15e29bf8"
+dependencies = [
+ "bytemuck",
+ "epi",
+ "wgpu",
+]
+
+[[package]]
+name = "egui_winit_platform"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6802c10732ce81479f5308bc89eaae7ee68f2eb43af1771d763892d24bbe7ab"
+dependencies = [
+ "egui",
+ "winit",
+]
+
+[[package]]
+name = "emath"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d876a5b910712537191b8d9aa1550a212a62fd2dd6f44f6ca5c671cf89bb841"
 
 [[package]]
 name = "env_logger"
@@ -444,6 +491,27 @@ dependencies = [
  "humantime",
  "log",
  "termcolor",
+]
+
+[[package]]
+name = "epaint"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fdb7fdb35896a43ad950a28b5188240cfbd186b22aa50269978575170b73c83"
+dependencies = [
+ "ahash 0.6.3",
+ "atomic_refcell",
+ "emath",
+ "rusttype",
+]
+
+[[package]]
+name = "epi"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e358eaf8b9898aa366bed1c0645dd439f272341e5cd1404c8a6a604e544ee065"
+dependencies = [
+ "egui",
 ]
 
 [[package]]
@@ -749,7 +817,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
 dependencies = [
- "ahash",
+ "ahash 0.4.7",
 ]
 
 [[package]]
@@ -786,50 +854,6 @@ dependencies = [
  "num-rational",
  "num-traits",
  "png",
-]
-
-[[package]]
-name = "imgui"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24cfcf6e3326886321c5d637caf1ce217006651059015fae372b1c49c0e722b2"
-dependencies = [
- "bitflags",
- "imgui-sys",
- "parking_lot",
-]
-
-[[package]]
-name = "imgui-sys"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85ca00be6b78bf02b57e91468cf19d08dfcc11d0fb3c2f3dc491c29404d8d330"
-dependencies = [
- "cc",
- "chlorine",
-]
-
-[[package]]
-name = "imgui-wgpu"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79d5d73b68effcb4bcb89048e8c437e01c6d5675247d664188c584ce4d6d9696"
-dependencies = [
- "bytemuck",
- "imgui",
- "log",
- "smallvec",
- "wgpu",
-]
-
-[[package]]
-name = "imgui-winit-support"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d632440e05c964e8a7f00f2659c4f71c97897d8c38a77a0c2dc1f3fe8d632208"
-dependencies = [
- "imgui",
- "winit",
 ]
 
 [[package]]
