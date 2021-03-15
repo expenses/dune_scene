@@ -455,7 +455,7 @@ async fn run() -> anyhow::Result<()> {
             }),
     );
 
-    let num_animated_models = 50;
+    let num_animated_models = 1000;
     let num_joints = animated_model.joint_indices_to_node_indices.len() as u32;
 
     let animated_model_animation_states: Vec<_> = (0..num_animated_models)
