@@ -32,7 +32,10 @@ void main() {
     Particle particle = particles[index];
 
     particle.position += particle.velocity * time.delta_time;
-    particle.time_alive_percentage += time.delta_time / particles_info.particle_duration;
+    // We get some strange behaviour without this min. Particle duration calculations are possibly incorrect.
+    particle.time_alive_percentage = min(
+        particle.time_alive_percentage + (time.delta_time / particles_info.particle_duration), 1.0
+    );
     particle.view_space_position = (camera.view * vec4(particle.position, 1.0)).xyz;
 
     particles[index] = particle;
