@@ -157,8 +157,6 @@ pub struct Pipelines {
     pub particles_movement_pipeline: wgpu::ComputePipeline,
     pub land_craft_movement_pipeline: wgpu::ComputePipeline,
     pub bake_height_map_pipeline: wgpu::RenderPipeline,
-    #[cfg(feature = "wasm")]
-    pub blit_to_srgb_pipeline: wgpu::RenderPipeline,
 }
 
 impl Pipelines {
@@ -188,9 +186,6 @@ impl Pipelines {
                 bind_group_layouts: &[&resources.main_bgl, &resources.particles_bgl],
                 push_constant_ranges: &[],
             });
-
-        let vs_fullscreen_tri = wgpu::include_spirv!("../shaders/compiled/fullscreen_tri.vert.spv");
-        let vs_fullscreen_tri = device.create_shader_module(&vs_fullscreen_tri);
 
         let fs_flat_colour = wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
         let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
@@ -371,7 +366,16 @@ impl Pipelines {
                     fragment: Some(wgpu::FragmentState {
                         module: &fs_alpha_circle,
                         entry_point: "main",
-                        targets: &[over_blend_colour_target_state(FRAMEBUFFER_FORMAT)],
+                        targets: &[wgpu::ColorTargetState {
+                            format: FRAMEBUFFER_FORMAT,
+                            color_blend: wgpu::BlendState {
+                                src_factor: wgpu::BlendFactor::SrcAlpha,
+                                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha_blend: wgpu::BlendState::REPLACE,
+                            write_mask: wgpu::ColorWrite::ALL,
+                        }],
                     }),
                     primitive: wgpu::PrimitiveState::default(),
                     depth_stencil: Some(wgpu::DepthStencilState {
@@ -393,6 +397,9 @@ impl Pipelines {
                         push_constant_ranges: &[],
                     });
 
+                let vs_fullscreen_tri =
+                    wgpu::include_spirv!("../shaders/compiled/fullscreen_tri.vert.spv");
+                let vs_fullscreen_tri = device.create_shader_module(&vs_fullscreen_tri);
                 let fs_tonemap = wgpu::include_spirv!("../shaders/compiled/tonemap.frag.spv");
                 let fs_tonemap = device.create_shader_module(&fs_tonemap);
 
@@ -584,54 +591,6 @@ impl Pipelines {
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
-            #[cfg(feature = "wasm")]
-            blit_to_srgb_pipeline: {
-                let blit_to_srgb_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("blit to srgb pipeline layout"),
-                        bind_group_layouts: &[&resources.main_bgl, &resources.single_texture_bgl],
-                        push_constant_ranges: &[],
-                    });
-
-                let fs_blit_to_srgb =
-                    wgpu::include_spirv!("../shaders/compiled/blit_to_srgb.frag.spv");
-                let fs_blit_to_srgb = device.create_shader_module(&fs_blit_to_srgb);
-
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("blit to srgb pipeline"),
-                    layout: Some(&blit_to_srgb_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_fullscreen_tri,
-                        entry_point: "main",
-                        buffers: &[],
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &fs_blit_to_srgb,
-                        entry_point: "main",
-                        targets: &[over_blend_colour_target_state(display_format)],
-                    }),
-                    primitive: wgpu::PrimitiveState::default(),
-                    depth_stencil: None,
-                    multisample: wgpu::MultisampleState::default(),
-                })
-            },
         }
-    }
-}
-
-fn over_blend_colour_target_state(format: wgpu::TextureFormat) -> wgpu::ColorTargetState {
-    wgpu::ColorTargetState {
-        format,
-        color_blend: wgpu::BlendState {
-            src_factor: wgpu::BlendFactor::SrcAlpha,
-            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-            operation: wgpu::BlendOperation::Add,
-        },
-        alpha_blend: wgpu::BlendState {
-            src_factor: wgpu::BlendFactor::One,
-            dst_factor: wgpu::BlendFactor::One,
-            operation: wgpu::BlendOperation::Add,
-        },
-        write_mask: wgpu::ColorWrite::ALL,
     }
 }
