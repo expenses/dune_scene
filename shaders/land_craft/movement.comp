@@ -8,7 +8,7 @@ layout(set = 0, binding = 4) uniform TimeBuffer {
     Time time;
 };
 
-layout(set = 0, binding = 2) uniform sampler u_sampler;
+layout(set = 0, binding = 5) uniform sampler clamp_sampler;
 
 layout(set = 1, binding = 0) buffer LandCraftBuffer {
     LandCraft crafts[];
@@ -37,7 +37,7 @@ const float SCENE_SIZE = 4.0;
 
 float sample_height(vec2 pos) {
     vec2 uv = pos / SCENE_SIZE + 0.5;
-    return textureLod(sampler2D(height_map, u_sampler), uv, 0).r;
+    return textureLod(sampler2D(height_map, clamp_sampler), uv, 0).r;
 }
 
 // We do things this way to avoid atan/atan2 which are slow and maybe branchy.

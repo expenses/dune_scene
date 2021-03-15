@@ -253,6 +253,10 @@ async fn run() -> anyhow::Result<()> {
                 binding: 4,
                 resource: time_buffer.as_entire_binding(),
             },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: wgpu::BindingResource::Sampler(&resources.clamp_sampler),
+            },
         ],
     });
 
