@@ -190,6 +190,7 @@ pub struct Pipelines {
     pub compute_joint_transforms_pipeline: wgpu::ComputePipeline,
     pub bake_height_map_pipeline: wgpu::RenderPipeline,
     pub animated_model_pipeline: wgpu::RenderPipeline,
+    pub set_global_transforms_pipeline: wgpu::ComputePipeline,
 }
 
 impl Pipelines {
@@ -616,11 +617,32 @@ impl Pipelines {
                     entry_point: "main",
                 })
             },
+            set_global_transforms_pipeline: {
+                let set_global_transforms_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("set global transforms pipeline layout"),
+                        bind_group_layouts: &[&resources.animation_bgl, &resources.main_bgl],
+                        push_constant_ranges: &[],
+                    });
+
+                let cs_set_global_transforms = wgpu::include_spirv!(
+                    "../shaders/compiled/animation_set_global_transforms.comp.spv"
+                );
+                let cs_set_global_transforms =
+                    device.create_shader_module(&cs_set_global_transforms);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("set global transforms pipeline"),
+                    layout: Some(&set_global_transforms_pipeline_layout),
+                    module: &cs_set_global_transforms,
+                    entry_point: "main",
+                })
+            },
             compute_joint_transforms_pipeline: {
                 let compute_joint_transforms_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("compute joint transforms pipeline layout"),
-                        bind_group_layouts: &[&resources.animation_bgl, &resources.main_bgl],
+                        bind_group_layouts: &[&resources.animation_bgl],
                         push_constant_ranges: &[],
                     });
 

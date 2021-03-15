@@ -456,6 +456,7 @@ async fn run() -> anyhow::Result<()> {
     );
 
     let num_animated_models = 50;
+    let num_joints = animated_model.joint_indices_to_node_indices.len() as u32;
 
     let animated_model_animation_states: Vec<_> = (0..num_animated_models)
         .map(|_| primitives::AnimationState {
@@ -700,6 +701,19 @@ async fn run() -> anyhow::Result<()> {
                     }
 
                     wgpu_profiler!(
+                        "setting global transforms",
+                        &mut profiler,
+                        &mut compute_pass,
+                        &device,
+                        {
+                            compute_pass.set_pipeline(&pipelines.set_global_transforms_pipeline);
+                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                            compute_pass.set_bind_group(1, &bind_group, &[]);
+                            compute_pass.dispatch(dispatch_count(num_animated_models, 64), 1, 1);
+                        }
+                    );
+
+                    wgpu_profiler!(
                         "computing joint transforms",
                         &mut profiler,
                         &mut compute_pass,
@@ -707,8 +721,11 @@ async fn run() -> anyhow::Result<()> {
                         {
                             compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
                             compute_pass.set_bind_group(0, &animation_bind_group, &[]);
-                            compute_pass.set_bind_group(1, &bind_group, &[]);
-                            compute_pass.dispatch(dispatch_count(num_animated_models, 64), 1, 1);
+                            compute_pass.dispatch(
+                                dispatch_count(num_animated_models * num_joints, 64),
+                                1,
+                                1,
+                            );
                         }
                     );
 

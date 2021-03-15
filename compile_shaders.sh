@@ -13,7 +13,9 @@ output=shaders/compiled/$(basename $file).spv
 glslc $file -o $output
 done
 
-for file in shaders/!(animation)/*.{vert,frag,comp} shaders/animation/compute_joint_transforms.comp
+for file in shaders/!(animation)/*.{vert,frag,comp} \
+    shaders/animation/compute_joint_transforms.comp \
+    shaders/animation/set_global_transforms.comp
 do
 dir=$(basename $(dirname $file))
 output="shaders/compiled/${dir}_$(basename $file).spv"
