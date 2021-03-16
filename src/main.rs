@@ -924,18 +924,25 @@ fn draw_ui(
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
 
-    // todo: re-enable with a newer egui version.
-    /*
+    use egui::widgets::color_picker::{color_edit_button_hsva, Alpha};
+
     let mut base_colour = egui::color::Hsva::from_rgb(settings.base_colour.into());
-    use egui::widgets::color_picker::Alpha;
 
-    let response = egui::widgets::color_picker::color_edit_button_hsva(ui, &mut base_colour, Alpha::Opaque);
+    ui.label("Ground Colour");
 
-    if response.changed() || response.changed() {
+    if color_edit_button_hsva(ui, &mut base_colour, Alpha::Opaque).changed() {
         settings.base_colour = base_colour.to_rgb().into();
         dirty.settings = true;
     }
-    */
+
+    let mut ambient_lighting = egui::color::Hsva::from_rgb(settings.ambient_lighting.into());
+
+    ui.label("Ambient Lighting");
+
+    if color_edit_button_hsva(ui, &mut ambient_lighting, Alpha::Opaque).changed() {
+        settings.ambient_lighting = ambient_lighting.to_rgb().into();
+        dirty.settings = true;
+    }
 
     dirty.settings |= ui
         .add(
