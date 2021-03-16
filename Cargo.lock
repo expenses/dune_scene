@@ -483,7 +483,8 @@ dependencies = [
 [[package]]
 name = "egui_wgpu_backend"
 version = "0.5.0"
-source = "git+https://github.com/expenses/egui_wgpu_backend?branch=wasm-hack#e291a198761c4f9e2fc6eed02aebb960d3cb017e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1296d3dd76a43816a556e85160b7f15c2191ec9cb2672e0c729c30383126b45f"
 dependencies = [
  "bytemuck",
  "epi",
@@ -493,7 +494,8 @@ dependencies = [
 [[package]]
 name = "egui_winit_platform"
 version = "0.5.0"
-source = "git+https://github.com/hasenbanck/egui_winit_platform#17298250e9721e8bf2c1d4a17b3e22777f8cb2e8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab7884807af301518a87774b2b2638b5fe59cbaae1c8907e23b0a28be8e2f672"
 dependencies = [
  "egui",
  "winit",
