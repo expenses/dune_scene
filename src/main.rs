@@ -1039,6 +1039,7 @@ async fn run() -> anyhow::Result<()> {
                 }
                 Err(error) => println!("Swap chain error: {:?}", error),
             },
+            #[cfg(not(feature = "wasm"))]
             Event::LoopDestroyed => {
                 let duration_since_epoch = std::time::UNIX_EPOCH.elapsed().unwrap();
                 let seconds = duration_since_epoch.as_secs();
