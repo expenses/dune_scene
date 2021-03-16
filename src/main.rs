@@ -484,8 +484,8 @@ async fn run() -> anyhow::Result<()> {
                     let position = Vec2::new(position.x, position.y);
 
                     if mouse_down
-                        && !egui_platform.context().is_mouse_over_area()
-                        && !egui_platform.context().is_using_mouse()
+                        && !egui_platform.context().is_pointer_over_area()
+                        && !egui_platform.context().is_using_pointer()
                     {
                         let delta = position - previous_cursor_position;
                         scene.orbit.rotate(delta);
@@ -931,7 +931,7 @@ fn draw_ui(
 
     let response = egui::widgets::color_picker::color_edit_button_hsva(ui, &mut base_colour, Alpha::Opaque);
 
-    if response.active || response.clicked {
+    if response.changed() || response.changed() {
         settings.base_colour = base_colour.to_rgb().into();
         dirty.settings = true;
     }
@@ -942,26 +942,26 @@ fn draw_ui(
             egui::widgets::Slider::f32(&mut settings.detail_map_scale, 0.0..=10.0)
                 .text("Detail Map Scale"),
         )
-        .active;
+        .changed();
 
     dirty.settings |= ui
         .add(
             egui::widgets::Slider::f32(&mut settings.roughness, 0.0..=1.0)
                 .text("Ground Specular Roughness"),
         )
-        .active;
+        .changed();
 
     dirty.settings |= ui
         .add(
             egui::widgets::Slider::f32(&mut settings.specular_factor, 0.0..=2.0)
                 .text("Ground Specular Multiplier"),
         )
-        .active;
+        .changed();
 
     for (mode, index) in primitives::Mode::iter() {
         dirty.settings |= ui
             .radio_value(&mut settings.mode, index, format!("{:?}", mode))
-            .clicked;
+            .changed();
     }
 
     ui.checkbox(render_sun_dir, "Render Sun Direction");
@@ -974,14 +974,14 @@ fn draw_ui(
             egui::widgets::Slider::f32(cascade_split_lambda, 0.0..=1.0)
                 .text("Cascade Split Lambda"),
         )
-        .active;
+        .changed();
 
     dirty.settings |= ui
         .add(
             egui::widgets::Slider::f32(&mut settings.ship_movement_bounds, 0.0..=2.5)
                 .text("Ship Movement Bounds"),
         )
-        .active;
+        .changed();
 
     for mode in primitives::TonemapperMode::iter() {
         dirty.tonemapper |= ui
@@ -990,7 +990,7 @@ fn draw_ui(
                 mode,
                 format!("Tonemapper {:?}", mode),
             )
-            .clicked;
+            .changed();
     }
 
     dirty.tonemapper |= ui
@@ -998,21 +998,21 @@ fn draw_ui(
             egui::widgets::Slider::f32(&mut tonemapper_params.toe, 1.0..=3.0)
                 .text("Tonemapper - Toe"),
         )
-        .active;
+        .changed();
 
     dirty.tonemapper |= ui
         .add(
             egui::widgets::Slider::f32(&mut tonemapper_params.shoulder, 0.5..=2.0)
                 .text("Tonemapper - Shoulder"),
         )
-        .active;
+        .changed();
 
     dirty.tonemapper |= ui
         .add(
             egui::widgets::Slider::f32(&mut tonemapper_params.max_luminance, 0.0..=30.0)
                 .text("Tonemapper - Max Luminance"),
         )
-        .active;
+        .changed();
 
     dirty.tonemapper |= ui
         .add(
@@ -1022,14 +1022,14 @@ fn draw_ui(
             )
             .text("Tonemapper - Grey In"),
         )
-        .active;
+        .changed();
 
     dirty.tonemapper |= ui
         .add(
             egui::widgets::Slider::f32(&mut tonemapper_params.grey_out, 0.0..=0.5)
                 .text("Tonemapper - Grey Out"),
         )
-        .active;
+        .changed();
 
     dirty
 }
