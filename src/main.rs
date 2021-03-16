@@ -34,10 +34,30 @@ const INDEX_FORMAT: wgpu::IndexFormat = wgpu::IndexFormat::Uint16;
 async fn run() -> anyhow::Result<()> {
     let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
 
+    let event_loop = winit::event_loop::EventLoop::new();
+    let window = winit::window::Window::new(&event_loop)?;
+
+    #[cfg(feature = "wasm")]
+    {
+        window.set_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
+
+        use winit::platform::web::WindowExtWebSys;
+        web_sys::window()
+            .and_then(|win| win.document())
+            .and_then(|doc| doc.body())
+            .and_then(|body| {
+                body.append_child(&web_sys::Element::from(window.canvas()))
+                    .ok()
+            })
+            .expect("couldn't append canvas to document body");
+    }
+
+    let surface = unsafe { instance.create_surface(&window) };
+
     let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: None,
+                compatible_surface: Some(&surface),
             })
             .await
             .ok_or_else(|| anyhow::anyhow!(
@@ -197,26 +217,7 @@ async fn run() -> anyhow::Result<()> {
     let land_craft_bytes = include_bytes!("../models/landcraft.glb");
     let land_craft = model_loading::LandCraft::load(land_craft_bytes, &device, &queue, &resources)?;
 
-    // Now we can create a window.
-
-    let event_loop = winit::event_loop::EventLoop::new();
-    let window = winit::window::Window::new(&event_loop)?;
-
-    #[cfg(feature = "wasm")]
-    {
-        window.set_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
-
-        use winit::platform::web::WindowExtWebSys;
-        web_sys::window()
-            .and_then(|win| win.document())
-            .and_then(|doc| doc.body())
-            .and_then(|body| {
-                body.append_child(&web_sys::Element::from(window.canvas()))
-                    .ok()
-            })
-            .expect("couldn't append canvas to document body");
-    }
-
+    let display_format = adapter.get_swap_chain_preferred_format(&surface);
     let window_size = window.inner_size();
     let width = window_size.width;
     let height = window_size.height;
@@ -259,10 +260,6 @@ async fn run() -> anyhow::Result<()> {
             },
         ],
     });
-
-    let surface = unsafe { instance.create_surface(&window) };
-
-    let display_format = adapter.get_swap_chain_preferred_format(&surface);
 
     let pipelines = Pipelines::new(&device, display_format, &resources, &cascaded_shadow_maps);
 
