@@ -13,8 +13,8 @@ layout(set = 0, binding = 2) writeonly buffer LocalTransforms {
     Similarity local_transforms[];
 };
 
-layout(set = 0, binding = 3) readonly buffer AnimationStates {
-    AnimationState animation_states[];
+layout(set = 0, binding = 3) readonly buffer AnimatedModelStates {
+    AnimatedModelState animated_model_states[];
 };
 
 layout(set = 1, binding = 0) readonly buffer Inputs {
@@ -77,9 +77,9 @@ void main() {
         return;
     }
 
-    AnimationState animation_state = animation_states[instance_index];
+    AnimatedModelState animated_model_state = animated_model_states[instance_index];
 
-    AnimationInfo animation_info = animation_info[animation_state.animation_index];
+    AnimationInfo animation_info = animation_info[animated_model_state.animation_index];
 
     uint channel_index = index % max_num_channels;
 
@@ -90,7 +90,7 @@ void main() {
         return;
     }
 
-    float time = animation_state.time;
+    float time = animated_model_state.time;
 
     Channel channel = channels[animation_info.channels_offset + channel_index];
 

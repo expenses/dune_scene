@@ -88,7 +88,7 @@ struct NodeAndParent {
     int parent_index;
 };
 
-struct AnimationState {
+struct AnimatedModelState {
     float time;
     float animation_duration;
     uint animation_index;

@@ -27,8 +27,8 @@ layout(set = 0, binding = 2) readonly buffer LocalTransforms {
     Similarity local_transforms[];
 };
 
-layout(set = 0, binding = 3) buffer AnimationStates {
-    AnimationState animation_states[];
+layout(set = 0, binding = 3) buffer AnimatedModelStates {
+    AnimatedModelState animated_model_states[];
 };
 
 layout(set = 0, binding = 4) buffer GlobalTransforms {
@@ -72,6 +72,6 @@ void main() {
         }
     }
 
-    AnimationState state = animation_states[index];
-    animation_states[index].time = mod(state.time + time.delta_time, state.animation_duration);
+    AnimatedModelState state = animated_model_states[index];
+    animated_model_states[index].time = mod(state.time + time.delta_time, state.animation_duration);
 }

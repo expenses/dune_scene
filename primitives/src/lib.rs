@@ -205,7 +205,7 @@ pub struct Rotor {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct AnimationState {
+pub struct AnimatedModelState {
     pub time: f32,
     pub animation_duration: f32,
     pub animation_index: u32,

@@ -282,11 +282,11 @@ pub fn create_animated_models(
     rng: &mut rand::rngs::ThreadRng,
     animated_model: &AnimatedModel,
 ) -> (wgpu::BindGroup, wgpu::Buffer) {
-    let animated_model_animation_states: Vec<_> = (0..num_animated_models)
+    let animated_model_states: Vec<_> = (0..num_animated_models)
         .map(|_| {
             let animation = rng.gen_range(0..animated_model.animations.len());
 
-            primitives::AnimationState {
+            primitives::AnimatedModelState {
                 time: rng.gen_range(0.0..=animated_model.animations[animation].total_time),
                 animation_duration: animated_model.animations[animation].total_time,
                 animation_index: animation as u32,
@@ -313,7 +313,7 @@ pub fn create_animated_models(
             .collect::<Vec<_>>(),
         &animated_model.inverse_bind_matrices,
         &animated_model.initial_local_transforms,
-        &animated_model_animation_states,
+        &animated_model_states,
     );
 
     let position_instances: Vec<_> = (0..num_animated_models)
@@ -343,7 +343,7 @@ fn create_animation_bind_group(
     joint_indices_to_node_indices: &[u32],
     inverse_bind_matrices: &[Mat4],
     local_transforms: &[ultraviolet::Similarity3],
-    animation_states: &[primitives::AnimationState],
+    animated_model_states: &[primitives::AnimatedModelState],
 ) -> wgpu::BindGroup {
     let num_joints = joint_indices_to_node_indices.len();
     let num_nodes = depth_first_nodes.len();
@@ -390,10 +390,10 @@ fn create_animation_bind_group(
         contents: bytemuck::cast_slice(&full_local_transforms),
     });
 
-    let animation_states = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("animation states"),
+    let animated_model_states = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("animated model states"),
         usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&animation_states),
+        contents: bytemuck::cast_slice(&animated_model_states),
     });
 
     let global_transforms = device.create_buffer(&wgpu::BufferDescriptor {
@@ -440,7 +440,7 @@ fn create_animation_bind_group(
             },
             wgpu::BindGroupEntry {
                 binding: 3,
-                resource: animation_states.as_entire_binding(),
+                resource: animated_model_states.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 4,
