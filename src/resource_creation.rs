@@ -283,9 +283,14 @@ pub fn create_animated_models(
     animated_model: &AnimatedModel,
 ) -> (wgpu::BindGroup, wgpu::Buffer) {
     let animated_model_animation_states: Vec<_> = (0..num_animated_models)
-        .map(|_| primitives::AnimationState {
-            time: rng.gen_range(0.0..=animated_model.animation.total_time),
-            animation_duration: animated_model.animation.total_time,
+        .map(|_| {
+            let animation = rng.gen_range(0..animated_model.animations.len());
+
+            primitives::AnimationState {
+                time: rng.gen_range(0.0..=animated_model.animations[animation].total_time),
+                animation_duration: animated_model.animations[animation].total_time,
+                animation_index: animation as u32,
+            }
         })
         .collect();
 
@@ -354,9 +359,9 @@ fn create_animation_bind_group(
     });
 
     let info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("animation info"),
+        label: Some("animated model info"),
         usage: wgpu::BufferUsage::UNIFORM,
-        contents: bytemuck::bytes_of(&primitives::AnimationInfo {
+        contents: bytemuck::bytes_of(&primitives::AnimatedModelInfo {
             num_joints: num_joints as u32,
             num_nodes: num_nodes as u32,
             num_instances: num_instances as u32,
@@ -462,6 +467,7 @@ fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
     name: &str,
     resources: &RenderResources,
     iter: impl Iterator<Item = (Vec<f32>, Vec<T>, u32)>,
+    num_channels_per_animation: impl Iterator<Item = u32> + Clone,
 ) -> (wgpu::BindGroup, u32) {
     let mut combined_inputs = Vec::new();
     let mut combined_outputs = Vec::new();
@@ -501,10 +507,30 @@ fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
         contents: bytemuck::cast_slice(&channels),
     });
 
-    let channel_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(&format!("animation {} channel info", name)),
+    let max_num_channels = num_channels_per_animation.clone().fold(0, |a, b| a.max(b));
+
+    let max_num_channels_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&format!("animation {} max num channels", name)),
         usage: wgpu::BufferUsage::UNIFORM,
-        contents: bytemuck::bytes_of(&(channels.len() as u32)),
+        contents: bytemuck::bytes_of(&max_num_channels),
+    });
+
+    let mut animation_info = Vec::new();
+    let mut channels_offset = 0;
+
+    for num_channels in num_channels_per_animation {
+        animation_info.push(primitives::AnimationInfo {
+            num_channels,
+            channels_offset,
+        });
+
+        channels_offset += num_channels;
+    }
+
+    let animation_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&format!("animation {} animation info", name)),
+        usage: wgpu::BufferUsage::STORAGE,
+        contents: bytemuck::cast_slice(&animation_info),
     });
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -525,12 +551,16 @@ fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
             },
             wgpu::BindGroupEntry {
                 binding: 3,
-                resource: channel_info.as_entire_binding(),
+                resource: max_num_channels_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: animation_info.as_entire_binding(),
             },
         ],
     });
 
-    (bind_group, channels.len() as u32)
+    (bind_group, max_num_channels)
 }
 
 pub fn create_scale_channel_bind_group(
@@ -543,9 +573,9 @@ pub fn create_scale_channel_bind_group(
         "scales",
         resources,
         animated_model
-            .animation
-            .scale_channels
+            .animations
             .iter()
+            .flat_map(|animation| animation.scale_channels.iter())
             .map(|channel| {
                 (
                     channel.inputs.clone(),
@@ -553,6 +583,10 @@ pub fn create_scale_channel_bind_group(
                     channel.node_index as u32,
                 )
             }),
+        animated_model
+            .animations
+            .iter()
+            .map(|animation| animation.scale_channels.len() as u32),
     )
 }
 
@@ -566,9 +600,9 @@ pub fn create_translation_channel_bind_group(
         "translations",
         resources,
         animated_model
-            .animation
-            .translation_channels
+            .animations
             .iter()
+            .flat_map(|animation| animation.translation_channels.iter())
             .map(move |channel| {
                 let outputs = channel
                     .outputs
@@ -578,6 +612,10 @@ pub fn create_translation_channel_bind_group(
 
                 (channel.inputs.clone(), outputs, channel.node_index as u32)
             }),
+        animated_model
+            .animations
+            .iter()
+            .map(|animation| animation.translation_channels.len() as u32),
     )
 }
 
@@ -591,9 +629,9 @@ pub fn create_rotation_channel_bind_group(
         "rotations",
         resources,
         animated_model
-            .animation
-            .rotation_channels
+            .animations
             .iter()
+            .flat_map(|animation| animation.rotation_channels.iter())
             .map(move |channel| {
                 let outputs = channel
                     .outputs
@@ -608,5 +646,9 @@ pub fn create_rotation_channel_bind_group(
 
                 (channel.inputs.clone(), outputs, channel.node_index as u32)
             }),
+        animated_model
+            .animations
+            .iter()
+            .map(|animation| animation.rotation_channels.len() as u32),
     )
 }

@@ -19,8 +19,8 @@ Similarity similiarity_mul_similarity(Similarity sim, Similarity base) {
     return sim;
 }
 
-layout(set = 0, binding = 1) uniform AnimationInfoUniform {
-    AnimationInfo animation_info;
+layout(set = 0, binding = 1) uniform AnimatedModelInfoUniform {
+    AnimatedModelInfo animated_model_info;
 };
 
 layout(set = 0, binding = 2) readonly buffer LocalTransforms {
@@ -48,14 +48,14 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint index = gl_GlobalInvocationID.x;
 
-    uint nodes_offset = index * animation_info.num_nodes;
-    uint joints_offset = index * animation_info.num_joints;
+    uint nodes_offset = index * animated_model_info.num_nodes;
+    uint joints_offset = index * animated_model_info.num_joints;
 
-    if (index >= animation_info.num_instances) {
+    if (index >= animated_model_info.num_instances) {
         return;
     }
 
-    for (uint i = 0; i < animation_info.num_nodes; i++) {
+    for (uint i = 0; i < animated_model_info.num_nodes; i++) {
         NodeAndParent indices = depth_first_nodes[i];
 
         uint node_index = nodes_offset + indices.node_index;

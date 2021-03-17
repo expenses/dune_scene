@@ -2,9 +2,11 @@
 #version 450
 
 #include "../includes/structs.glsl"
+#include "../includes/rotor.glsl"
+#include "interpolation.glsl"
 
-layout(set = 0, binding = 1) uniform AnimationInfoUniform {
-    AnimationInfo animation_info;
+layout(set = 0, binding = 1) uniform AnimatedModelInfoUniform {
+    AnimatedModelInfo animated_model_info;
 };
 
 layout(set = 0, binding = 2) writeonly buffer LocalTransforms {
@@ -27,11 +29,13 @@ layout(set = 1, binding = 2) readonly buffer Channels {
     Channel channels[];
 };
 
-layout(set = 1, binding = 3) uniform ChannelInfo {
-    uint num_channels;
+layout(set = 1, binding = 3) uniform MaxNumChannels {
+    uint max_num_channels;
 };
 
-#include "interpolation.glsl"
+layout(set = 1, binding = 4) readonly buffer AnimationInfoBuffer {
+    AnimationInfo animation_info[];
+};
 
 SAMPLE_TYPE sample_cubic_spline(float t, Channel channel) {
     uint i = 0;
@@ -67,17 +71,28 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint index = gl_GlobalInvocationID.x;
 
-    uint animation_index = index / num_channels;
-    uint channel_index = index % num_channels;
-    uint node_index = animation_index * animation_info.num_nodes;
+    uint instance_index = index / max_num_channels;
 
-    if (animation_index >= animation_info.num_instances) {
+    if (instance_index >= animated_model_info.num_instances) {
         return;
     }
 
-    float time = animation_states[animation_index].time;
+    AnimationState animation_state = animation_states[instance_index];
 
-    Channel channel = channels[channel_index];
+    AnimationInfo animation_info = animation_info[animation_state.animation_index];
+
+    uint channel_index = index % max_num_channels;
+
+    // We dispatch num_instances * max_num_channels threads, so if an animation
+    // has less channels than that, we just return. This is a tad wasteful, but
+    // it seems to be performant enough.
+    if (channel_index >= animation_info.num_channels) {
+        return;
+    }
+
+    float time = animation_state.time;
+
+    Channel channel = channels[animation_info.channels_offset + channel_index];
 
     // If the time is out of the animation range of this channel, then return.
     if (
@@ -89,5 +104,6 @@ void main() {
 
     SAMPLE_TYPE value = sample_cubic_spline(time, channel);
 
-    local_transforms[node_index + channel.node_index].FIELD = value;
+    uint node_offset = instance_index * animated_model_info.num_nodes;
+    local_transforms[node_offset + channel.node_index].FIELD = value;
 }

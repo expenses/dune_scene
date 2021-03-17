@@ -17,8 +17,8 @@ layout(set = 0, binding = 0) writeonly buffer JointTransforms {
     mat4 joint_transforms[];
 };
 
-layout(set = 0, binding = 1) uniform AnimationInfoUniform {
-    AnimationInfo animation_info;
+layout(set = 0, binding = 1) uniform AnimatedModelInfoUniform {
+    AnimatedModelInfo animated_model_info;
 };
 
 layout(set = 0, binding = 4) readonly buffer GlobalTransforms {
@@ -38,14 +38,14 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint global_joint_index = gl_GlobalInvocationID.x;
 
-    uint instance_index = global_joint_index / animation_info.num_joints;
+    uint instance_index = global_joint_index / animated_model_info.num_joints;
 
-    if (instance_index >= animation_info.num_instances) {
+    if (instance_index >= animated_model_info.num_instances) {
         return;
     }
 
-    uint global_node_offset = instance_index * animation_info.num_nodes;
-    uint local_joint_index = global_joint_index % animation_info.num_joints;
+    uint global_node_offset = instance_index * animated_model_info.num_nodes;
+    uint local_joint_index = global_joint_index % animated_model_info.num_joints;
     uint global_node_index = global_node_offset + joint_indices_to_node_indices[local_joint_index];
 
     mat4 inverse_bind_matrix = inverse_bind_matrices[local_joint_index];

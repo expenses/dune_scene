@@ -1,5 +1,3 @@
-#include "../includes/rotor.glsl"
-
 float cublic_spline_interpolate(
     float starting_point,
     float starting_out_tangent,

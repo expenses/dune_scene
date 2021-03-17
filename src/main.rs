@@ -305,13 +305,13 @@ async fn run() -> anyhow::Result<()> {
         &settings,
     );
 
-    let (sample_scales_bind_group, num_scale_channels) =
+    let (sample_scales_bind_group, max_num_scale_channels) =
         create_scale_channel_bind_group(&device, &resources, &animated_model);
 
-    let (sample_translations_bind_group, num_translation_channels) =
+    let (sample_translations_bind_group, max_num_translation_channels) =
         create_translation_channel_bind_group(&device, &resources, &animated_model);
 
-    let (sample_rotations_bind_group, num_rotation_channels) =
+    let (sample_rotations_bind_group, max_num_rotation_channels) =
         create_rotation_channel_bind_group(&device, &resources, &animated_model);
 
     let num_joints = animated_model.joint_indices_to_node_indices.len() as u32;
@@ -463,7 +463,7 @@ async fn run() -> anyhow::Result<()> {
                             label: Some("compute pass"),
                         });
 
-                    if num_translation_channels > 0 {
+                    if max_num_translation_channels > 0 {
                         wgpu_profiler!(
                             "sampling translations",
                             &mut profiler,
@@ -479,7 +479,7 @@ async fn run() -> anyhow::Result<()> {
                                 );
                                 compute_pass.dispatch(
                                     dispatch_count(
-                                        num_animated_models * num_translation_channels,
+                                        num_animated_models * max_num_translation_channels,
                                         64,
                                     ),
                                     1,
@@ -489,7 +489,7 @@ async fn run() -> anyhow::Result<()> {
                         );
                     }
 
-                    if num_scale_channels > 0 {
+                    if max_num_scale_channels > 0 {
                         wgpu_profiler!(
                             "sampling scales",
                             &mut profiler,
@@ -500,7 +500,10 @@ async fn run() -> anyhow::Result<()> {
                                 compute_pass.set_bind_group(0, &animation_bind_group, &[]);
                                 compute_pass.set_bind_group(1, &sample_scales_bind_group, &[]);
                                 compute_pass.dispatch(
-                                    dispatch_count(num_animated_models * num_scale_channels, 64),
+                                    dispatch_count(
+                                        num_animated_models * max_num_scale_channels,
+                                        64,
+                                    ),
                                     1,
                                     1,
                                 );
@@ -508,7 +511,7 @@ async fn run() -> anyhow::Result<()> {
                         );
                     }
 
-                    if num_rotation_channels > 0 {
+                    if max_num_rotation_channels > 0 {
                         wgpu_profiler!(
                             "sampling rotations",
                             &mut profiler,
@@ -519,7 +522,10 @@ async fn run() -> anyhow::Result<()> {
                                 compute_pass.set_bind_group(0, &animation_bind_group, &[]);
                                 compute_pass.set_bind_group(1, &sample_rotations_bind_group, &[]);
                                 compute_pass.dispatch(
-                                    dispatch_count(num_animated_models * num_rotation_channels, 64),
+                                    dispatch_count(
+                                        num_animated_models * max_num_rotation_channels,
+                                        64,
+                                    ),
                                     1,
                                     1,
                                 );

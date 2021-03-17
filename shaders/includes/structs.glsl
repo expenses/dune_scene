@@ -91,6 +91,7 @@ struct NodeAndParent {
 struct AnimationState {
     float time;
     float animation_duration;
+    uint animation_index;
 };
 
 struct Channel {
@@ -100,8 +101,13 @@ struct Channel {
     uint node_index;
 };
 
-struct AnimationInfo {
+struct AnimatedModelInfo {
     uint num_joints;
     uint num_nodes;
     uint num_instances;
+};
+
+struct AnimationInfo {
+    uint num_channels;
+    uint channels_offset;
 };

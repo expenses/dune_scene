@@ -188,7 +188,7 @@ pub struct AnimatedVertex {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct AnimationInfo {
+pub struct AnimatedModelInfo {
     pub num_joints: u32,
     pub num_nodes: u32,
     pub num_instances: u32,
@@ -208,6 +208,7 @@ pub struct Rotor {
 pub struct AnimationState {
     pub time: f32,
     pub animation_duration: f32,
+    pub animation_index: u32,
 }
 
 #[repr(C)]
@@ -217,4 +218,11 @@ pub struct Channel {
     pub outputs_offset: u32,
     pub num_inputs: u32,
     pub node_index: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct AnimationInfo {
+    pub num_channels: u32,
+    pub channels_offset: u32,
 }

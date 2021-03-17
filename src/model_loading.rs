@@ -534,7 +534,7 @@ pub struct AnimatedModel {
     pub num_indices: u32,
     pub texture_bind_group: wgpu::BindGroup,
 
-    pub animation: animation::Animation,
+    pub animations: Vec<animation::Animation>,
     pub initial_local_transforms: Vec<ultraviolet::Similarity3>,
     pub joint_indices_to_node_indices: Vec<usize>,
     pub inverse_bind_matrices: Vec<Mat4>,
@@ -653,10 +653,8 @@ impl AnimatedModel {
             }],
         });
 
-        let mut animations =
+        let animations =
             animation::read_animations(gltf.animations(), &buffer_blob, "animated model");
-
-        let animation = animations.remove(0);
 
         let depth_first_nodes: Vec<_> = node_tree.iter_depth_first().collect();
 
@@ -688,7 +686,7 @@ impl AnimatedModel {
             indices,
             num_indices,
             texture_bind_group,
-            animation,
+            animations,
             depth_first_nodes,
             initial_local_transforms,
             joint_indices_to_node_indices,
