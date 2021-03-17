@@ -71,6 +71,9 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 void main() {
     uint index = gl_GlobalInvocationID.x;
 
+    // todo: when we have a model with a variable about of channels per animation,
+    // try transposing this so we're iterating through models and then channels
+    // to see if it's faster.
     uint instance_index = index / max_num_channels;
 
     if (instance_index >= animated_model_info.num_instances) {
