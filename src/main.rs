@@ -366,8 +366,8 @@ async fn run() -> anyhow::Result<()> {
 
     let num_joints = animated_model.joint_indices_to_node_indices.len() as u32;
 
-    let num_animated_models = 1000;
-    let (animation_bind_group, position_instances_buffer) = create_animated_models(
+    let mut num_animated_models = 1000;
+    let (mut animation_bind_group, mut position_instances_buffer) = create_animated_models(
         num_animated_models,
         &device,
         &resources,
@@ -824,6 +824,7 @@ async fn run() -> anyhow::Result<()> {
                                 &mut cascade_split_lambda,
                                 &mut num_ships,
                                 &mut num_land_craft,
+                                &mut num_animated_models,
                             );
 
                             if dirty.settings {
@@ -893,6 +894,20 @@ async fn run() -> anyhow::Result<()> {
                                 smoke_particles_bind_group = new_smoke_particles_bind_group;
                                 num_sand_particles = new_num_sand_particles;
                                 sand_particles_bind_group = new_sand_particles_bind_group;
+                            }
+
+                            if dirty.animated_models {
+                                let (new_animation_bind_group, new_position_instances_buffer) =
+                                    create_animated_models(
+                                        num_animated_models,
+                                        &device,
+                                        &resources,
+                                        &mut rng,
+                                        &animated_model,
+                                    );
+
+                                animation_bind_group = new_animation_bind_group;
+                                position_instances_buffer = new_position_instances_buffer;
                             }
                         },
                     );
@@ -1003,6 +1018,7 @@ fn draw_ui(
     cascade_split_lambda: &mut f32,
     num_ships: &mut u32,
     num_land_craft: &mut u32,
+    num_animated_models: &mut u32,
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
 
@@ -1059,6 +1075,13 @@ fn draw_ui(
 
     dirty.landcrafts |= ui
         .add(egui::widgets::Slider::u32(num_land_craft, 1..=2000).text("Number Of Landcrafts"))
+        .changed();
+
+    dirty.animated_models |= ui
+        .add(
+            egui::widgets::Slider::u32(num_animated_models, 1..=2000)
+                .text("Number Of Animated Models"),
+        )
         .changed();
 
     ui.checkbox(render_sun_dir, "Render Sun Direction");
@@ -1138,6 +1161,7 @@ struct DirtyObjects {
     csm: bool,
     ships: bool,
     landcrafts: bool,
+    animated_models: bool,
 }
 
 const fn dispatch_count(num: u32, group_size: u32) -> u32 {

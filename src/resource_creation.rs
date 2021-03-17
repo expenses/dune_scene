@@ -343,8 +343,6 @@ fn create_animation_bind_group(
     let num_joints = joint_indices_to_node_indices.len();
     let num_nodes = depth_first_nodes.len();
 
-    println!("{}/{}", num_joints, num_nodes);
-
     debug_assert_eq!(inverse_bind_matrices.len(), num_joints);
     debug_assert_eq!(local_transforms.len(), num_nodes);
 
