@@ -1,9 +1,13 @@
 mod model_loading;
+mod resource_creation;
 mod resources_and_pipelines;
 
 use cascaded_shadow_maps::CascadedShadowMaps;
 use model_loading::Scene;
-use rand::Rng;
+use resource_creation::{
+    create_height_map, create_land_craft, create_ships, create_texture,
+    framebuffer_and_tonemapper_bind_group,
+};
 use resources_and_pipelines::{Pipelines, RenderResources};
 use ultraviolet::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
@@ -124,85 +128,6 @@ async fn run() -> anyhow::Result<()> {
             ..Default::default()
         }),
     });
-
-    let mut rng = rand::thread_rng();
-
-    let num_ships = 200;
-    let ship_positions: Vec<_> = (0..num_ships)
-        .map(|_| primitives::Ship {
-            position: Vec3::new(
-                rng.gen_range(-2.0..=2.0),
-                rng.gen_range(0.49..=0.51),
-                rng.gen_range(-2.0..=2.0),
-            ),
-            y_rotation: rng.gen_range(0.0..360.0_f32.to_radians()),
-            rotation_speed: rng.gen_range(-0.02..=0.02),
-            ..Default::default()
-        })
-        .collect();
-
-    let ship_positions_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("ship positions buffer"),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&ship_positions),
-    });
-
-    let ship_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("ship bind group"),
-        layout: &resources.ship_bgl,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: ship_positions_buffer.as_entire_binding(),
-        }],
-    });
-
-    let particles_per_ship = 15 * 2;
-    let num_exhaust_particles = num_ships * particles_per_ship;
-    let exhaust_particles_bind_group = create_particle_bind_group(
-        &device,
-        "exhaust particles",
-        num_exhaust_particles as u64,
-        Vec3::new(0.5, 0.75, 1.0),
-        0.02,
-        &resources,
-    );
-
-    let num_land_craft = 400;
-    let land_craft: Vec<_> = (0..num_land_craft)
-        .map(|_| primitives::LandCraft {
-            position: Vec3::new(rng.gen_range(-2.0..=2.0), 0.0, rng.gen_range(-2.0..=2.0)),
-            facing: rng.gen_range(0.0..360.0_f32.to_radians()),
-            ..Default::default()
-        })
-        .collect();
-
-    let land_craft_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("land craft buffer"),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&land_craft),
-    });
-
-    let smoke_particles_per_landcraft = 45;
-    let num_smoke_particles = num_land_craft * smoke_particles_per_landcraft;
-    let smoke_particles_bind_group = create_particle_bind_group(
-        &device,
-        "smoke particles",
-        num_smoke_particles as u64,
-        Vec3::broadcast(0.15),
-        0.03,
-        &resources,
-    );
-
-    let sand_particles_per_landcraft = 10;
-    let num_sand_particles = num_land_craft * sand_particles_per_landcraft;
-    let sand_particles_bind_group = create_particle_bind_group(
-        &device,
-        "sand particles",
-        num_sand_particles as u64,
-        settings.base_colour * 0.4,
-        0.1,
-        &resources,
-    );
 
     let scene_bytes = include_bytes!("../models/dune.glb");
     let mut scene = Scene::load(scene_bytes, &device, &queue, &resources)?;
@@ -338,59 +263,36 @@ async fn run() -> anyhow::Result<()> {
         &queue,
     );
 
-    let height_map_texture = {
-        let height_map_texture = create_texture(
-            &device,
-            "height map texture",
-            1024,
-            1024,
-            wgpu::TextureFormat::R32Float,
-            wgpu::TextureUsage::RENDER_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
-        );
+    let height_map_texture = create_height_map(
+        &device,
+        &queue,
+        &pipelines,
+        &scene.vertices,
+        &scene.indices,
+        scene.num_indices,
+    );
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("height map encoder"),
-        });
+    let mut rng = rand::thread_rng();
 
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("height map render pass"),
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: &height_map_texture,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: true,
-                },
-            }],
-            depth_stencil_attachment: None,
-        });
+    let mut num_ships = 200;
+    let (mut ship_bind_group, mut num_exhaust_particles, mut exhaust_particles_bind_group) =
+        create_ships(num_ships, &device, &mut rng, &resources);
 
-        render_pass.set_pipeline(&pipelines.bake_height_map_pipeline);
-        render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
-        render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
-        render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
-
-        drop(render_pass);
-
-        queue.submit(Some(encoder.finish()));
-
-        height_map_texture
-    };
-
-    let land_craft_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("land craft bind group"),
-        layout: &resources.land_craft_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: land_craft_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(&height_map_texture),
-            },
-        ],
-    });
+    let mut num_land_craft = 400;
+    let (
+        mut land_craft_bind_group,
+        mut num_smoke_particles,
+        mut smoke_particles_bind_group,
+        mut num_sand_particles,
+        mut sand_particles_bind_group,
+    ) = create_land_craft(
+        num_land_craft,
+        &device,
+        &mut rng,
+        &resources,
+        &height_map_texture,
+        &settings,
+    );
 
     let mut render_sun_dir = false;
     let mut move_vehicles = true;
@@ -731,6 +633,8 @@ async fn run() -> anyhow::Result<()> {
                                 &mut render_ships,
                                 &mut render_ship_shadows,
                                 &mut cascade_split_lambda,
+                                &mut num_ships,
+                                &mut num_land_craft,
                             );
 
                             if dirty.settings {
@@ -766,6 +670,41 @@ async fn run() -> anyhow::Result<()> {
                                     &queue,
                                 );
                             };
+
+                            if dirty.ships {
+                                let (
+                                    new_ship_bind_group,
+                                    new_num_exhaust_particles,
+                                    new_exhaust_particles_bind_group,
+                                ) = create_ships(num_ships, &device, &mut rng, &resources);
+
+                                ship_bind_group = new_ship_bind_group;
+                                num_exhaust_particles = new_num_exhaust_particles;
+                                exhaust_particles_bind_group = new_exhaust_particles_bind_group;
+                            }
+
+                            if dirty.landcrafts {
+                                let (
+                                    new_land_craft_bind_group,
+                                    new_num_smoke_particles,
+                                    new_smoke_particles_bind_group,
+                                    new_num_sand_particles,
+                                    new_sand_particles_bind_group,
+                                ) = create_land_craft(
+                                    num_land_craft,
+                                    &device,
+                                    &mut rng,
+                                    &resources,
+                                    &height_map_texture,
+                                    &settings,
+                                );
+
+                                land_craft_bind_group = new_land_craft_bind_group;
+                                num_smoke_particles = new_num_smoke_particles;
+                                smoke_particles_bind_group = new_smoke_particles_bind_group;
+                                num_sand_particles = new_num_sand_particles;
+                                sand_particles_bind_group = new_sand_particles_bind_group;
+                            }
                         },
                     );
                     let (_output, paint_commands) = egui_platform.end_frame();
@@ -805,69 +744,6 @@ async fn run() -> anyhow::Result<()> {
             _ => {}
         }
     });
-}
-
-fn create_texture(
-    device: &wgpu::Device,
-    label: &str,
-    width: u32,
-    height: u32,
-    format: wgpu::TextureFormat,
-    usage: wgpu::TextureUsage,
-) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-        })
-        .create_view(&wgpu::TextureViewDescriptor::default())
-}
-
-fn framebuffer_and_tonemapper_bind_group(
-    device: &wgpu::Device,
-    width: u32,
-    height: u32,
-    resources: &RenderResources,
-    tonemapper_uniform_buffer: &wgpu::Buffer,
-) -> (wgpu::TextureView, wgpu::BindGroup) {
-    let framebuffer_texture = create_texture(
-        &device,
-        "framebuffer texture",
-        width,
-        height,
-        FRAMEBUFFER_FORMAT,
-        wgpu::TextureUsage::RENDER_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
-    );
-
-    let tonemapper_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("tonemapper bind group"),
-        layout: &resources.tonemap_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&framebuffer_texture),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&resources.sampler),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: tonemapper_uniform_buffer.as_entire_binding(),
-            },
-        ],
-    });
-
-    (framebuffer_texture, tonemapper_bind_group)
 }
 
 #[derive(Copy, Clone)]
@@ -918,6 +794,8 @@ fn draw_ui(
     render_ships: &mut bool,
     render_ship_shadows: &mut bool,
     cascade_split_lambda: &mut f32,
+    num_ships: &mut u32,
+    num_land_craft: &mut u32,
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
 
@@ -967,6 +845,14 @@ fn draw_ui(
             .radio_value(&mut settings.mode, index, format!("{:?}", mode))
             .changed();
     }
+
+    dirty.ships |= ui
+        .add(egui::widgets::Slider::u32(num_ships, 1..=2000).text("Number Of Ships"))
+        .changed();
+
+    dirty.landcrafts |= ui
+        .add(egui::widgets::Slider::u32(num_land_craft, 1..=2000).text("Number Of Landcrafts"))
+        .changed();
 
     ui.checkbox(render_sun_dir, "Render Sun Direction");
     ui.checkbox(move_vehicles, "Move Vehicles");
@@ -1043,6 +929,8 @@ struct DirtyObjects {
     settings: bool,
     tonemapper: bool,
     csm: bool,
+    ships: bool,
+    landcrafts: bool,
 }
 
 const fn dispatch_count(num: u32, group_size: u32) -> u32 {
@@ -1077,45 +965,4 @@ fn update_camera_and_shadows(
         scene.sun_facing,
         &queue,
     );
-}
-
-fn create_particle_bind_group(
-    device: &wgpu::Device,
-    name: &str,
-    num: u64,
-    colour: Vec3,
-    half_size_linear: f32,
-    resources: &RenderResources,
-) -> wgpu::BindGroup {
-    let particles_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some(&format!("{} buffer", name)),
-        usage: wgpu::BufferUsage::STORAGE,
-        size: std::mem::size_of::<primitives::Particle>() as u64 * num,
-        mapped_at_creation: false,
-    });
-
-    let particles_buffer_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(&format!("{} info buffer", name)),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::bytes_of(&primitives::ParticlesBufferInfo {
-            colour,
-            half_size_linear,
-            ..Default::default()
-        }),
-    });
-
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some(&format!("{} bind group", name)),
-        layout: &resources.particles_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: particles_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: particles_buffer_info.as_entire_binding(),
-            },
-        ],
-    })
 }
