@@ -1,11 +1,15 @@
 mod model_loading;
+mod resource_creation;
 mod resources_and_pipelines;
 
 use cascaded_shadow_maps::CascadedShadowMaps;
 use model_loading::Scene;
-use rand::Rng;
+use resource_creation::{
+    create_animated_models, create_channel_bind_group, create_height_map, create_land_craft,
+    create_ships, create_texture, framebuffer_and_tonemapper_bind_group,
+};
 use resources_and_pipelines::{Pipelines, RenderResources};
-use ultraviolet::{Mat4, Vec2, Vec3};
+use ultraviolet::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
 use wgpu_profiler::wgpu_profiler;
 
@@ -130,85 +134,6 @@ async fn run() -> anyhow::Result<()> {
             ..Default::default()
         }),
     });
-
-    let mut rng = rand::thread_rng();
-
-    let num_ships = 200;
-    let ship_positions: Vec<_> = (0..num_ships)
-        .map(|_| primitives::Ship {
-            position: Vec3::new(
-                rng.gen_range(-2.0..=2.0),
-                rng.gen_range(0.49..=0.51),
-                rng.gen_range(-2.0..=2.0),
-            ),
-            y_rotation: rng.gen_range(0.0..360.0_f32.to_radians()),
-            rotation_speed: rng.gen_range(-0.02..=0.02),
-            ..Default::default()
-        })
-        .collect();
-
-    let ship_positions_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("ship positions buffer"),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&ship_positions),
-    });
-
-    let ship_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("ship bind group"),
-        layout: &resources.ship_bgl,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: ship_positions_buffer.as_entire_binding(),
-        }],
-    });
-
-    let particles_per_ship = 15 * 2;
-    let num_exhaust_particles = num_ships * particles_per_ship;
-    let exhaust_particles_bind_group = create_particle_bind_group(
-        &device,
-        "exhaust particles",
-        num_exhaust_particles as u64,
-        Vec3::new(0.5, 0.75, 1.0),
-        0.02,
-        &resources,
-    );
-
-    let num_land_craft = 400;
-    let land_craft: Vec<_> = (0..num_land_craft)
-        .map(|_| primitives::LandCraft {
-            position: Vec3::new(rng.gen_range(-2.0..=2.0), 0.0, rng.gen_range(-2.0..=2.0)),
-            facing: rng.gen_range(0.0..360.0_f32.to_radians()),
-            ..Default::default()
-        })
-        .collect();
-
-    let land_craft_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("land craft buffer"),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&land_craft),
-    });
-
-    let smoke_particles_per_landcraft = 45;
-    let num_smoke_particles = num_land_craft * smoke_particles_per_landcraft;
-    let smoke_particles_bind_group = create_particle_bind_group(
-        &device,
-        "smoke particles",
-        num_smoke_particles as u64,
-        Vec3::broadcast(0.15),
-        0.03,
-        &resources,
-    );
-
-    let sand_particles_per_landcraft = 10;
-    let num_sand_particles = num_land_craft * sand_particles_per_landcraft;
-    let sand_particles_bind_group = create_particle_bind_group(
-        &device,
-        "sand particles",
-        num_sand_particles as u64,
-        settings.base_colour * 0.4,
-        0.1,
-        &resources,
-    );
 
     let scene_bytes = include_bytes!("../models/dune.glb");
     let mut scene = Scene::load(scene_bytes, &device, &queue, &resources)?;
@@ -348,59 +273,36 @@ async fn run() -> anyhow::Result<()> {
         &queue,
     );
 
-    let height_map_texture = {
-        let height_map_texture = create_texture(
-            &device,
-            "height map texture",
-            1024,
-            1024,
-            wgpu::TextureFormat::R32Float,
-            wgpu::TextureUsage::RENDER_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
-        );
+    let height_map_texture = create_height_map(
+        &device,
+        &queue,
+        &pipelines,
+        &scene.vertices,
+        &scene.indices,
+        scene.num_indices,
+    );
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("height map encoder"),
-        });
+    let mut rng = rand::thread_rng();
 
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("height map render pass"),
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: &height_map_texture,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: true,
-                },
-            }],
-            depth_stencil_attachment: None,
-        });
+    let mut num_ships = 200;
+    let (mut ship_bind_group, mut num_exhaust_particles, mut exhaust_particles_bind_group) =
+        create_ships(num_ships, &device, &mut rng, &resources);
 
-        render_pass.set_pipeline(&pipelines.bake_height_map_pipeline);
-        render_pass.set_vertex_buffer(0, scene.vertices.slice(..));
-        render_pass.set_index_buffer(scene.indices.slice(..), INDEX_FORMAT);
-        render_pass.draw_indexed(0..scene.num_indices, 0, 0..1);
-
-        drop(render_pass);
-
-        queue.submit(Some(encoder.finish()));
-
-        height_map_texture
-    };
-
-    let land_craft_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("land craft bind group"),
-        layout: &resources.land_craft_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: land_craft_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(&height_map_texture),
-            },
-        ],
-    });
+    let mut num_land_craft = 400;
+    let (
+        mut land_craft_bind_group,
+        mut num_smoke_particles,
+        mut smoke_particles_bind_group,
+        mut num_sand_particles,
+        mut sand_particles_bind_group,
+    ) = create_land_craft(
+        num_land_craft,
+        &device,
+        &mut rng,
+        &resources,
+        &height_map_texture,
+        &settings,
+    );
 
     let (sample_scales_bind_group, num_scale_channels) = create_channel_bind_group(
         &device,
@@ -462,53 +364,16 @@ async fn run() -> anyhow::Result<()> {
             }),
     );
 
-    let num_animated_models = 1000;
     let num_joints = animated_model.joint_indices_to_node_indices.len() as u32;
 
-    let animated_model_animation_states: Vec<_> = (0..num_animated_models)
-        .map(|_| primitives::AnimationState {
-            time: rng.gen_range(0.0..=animated_model.animation.total_time),
-            animation_duration: animated_model.animation.total_time,
-        })
-        .collect();
-
-    let animation_bind_group = create_animation_bind_group(
+    let num_animated_models = 1000;
+    let (animation_bind_group, position_instances_buffer) = create_animated_models(
+        num_animated_models,
         &device,
         &resources,
-        num_animated_models as usize,
-        &animated_model
-            .depth_first_nodes
-            .iter()
-            .map(|(node_index, parent_index)| primitives::NodeAndParent {
-                node_index: *node_index as u32,
-                parent_index: parent_index.map(|p| p as i32).unwrap_or(-1),
-            })
-            .collect::<Vec<_>>(),
-        &animated_model
-            .joint_indices_to_node_indices
-            .iter()
-            .map(|index| *index as u32)
-            .collect::<Vec<_>>(),
-        &animated_model.inverse_bind_matrices,
-        &animated_model.initial_local_transforms,
-        &animated_model_animation_states,
+        &mut rng,
+        &animated_model,
     );
-
-    let position_instances: Vec<_> = (0..num_animated_models)
-        .map(|_| {
-            Vec3::new(
-                rng.gen_range(-2.0..=2.0),
-                rng.gen_range(0.0..=0.5),
-                rng.gen_range(-2.0..=2.0),
-            )
-        })
-        .collect();
-
-    let position_instances_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("position instances"),
-        usage: wgpu::BufferUsage::VERTEX,
-        contents: bytemuck::cast_slice(&position_instances),
-    });
 
     let mut render_sun_dir = false;
     let mut move_vehicles = true;
@@ -957,6 +822,8 @@ async fn run() -> anyhow::Result<()> {
                                 &mut render_ships,
                                 &mut render_ship_shadows,
                                 &mut cascade_split_lambda,
+                                &mut num_ships,
+                                &mut num_land_craft,
                             );
 
                             if dirty.settings {
@@ -992,6 +859,41 @@ async fn run() -> anyhow::Result<()> {
                                     &queue,
                                 );
                             };
+
+                            if dirty.ships {
+                                let (
+                                    new_ship_bind_group,
+                                    new_num_exhaust_particles,
+                                    new_exhaust_particles_bind_group,
+                                ) = create_ships(num_ships, &device, &mut rng, &resources);
+
+                                ship_bind_group = new_ship_bind_group;
+                                num_exhaust_particles = new_num_exhaust_particles;
+                                exhaust_particles_bind_group = new_exhaust_particles_bind_group;
+                            }
+
+                            if dirty.landcrafts {
+                                let (
+                                    new_land_craft_bind_group,
+                                    new_num_smoke_particles,
+                                    new_smoke_particles_bind_group,
+                                    new_num_sand_particles,
+                                    new_sand_particles_bind_group,
+                                ) = create_land_craft(
+                                    num_land_craft,
+                                    &device,
+                                    &mut rng,
+                                    &resources,
+                                    &height_map_texture,
+                                    &settings,
+                                );
+
+                                land_craft_bind_group = new_land_craft_bind_group;
+                                num_smoke_particles = new_num_smoke_particles;
+                                smoke_particles_bind_group = new_smoke_particles_bind_group;
+                                num_sand_particles = new_num_sand_particles;
+                                sand_particles_bind_group = new_sand_particles_bind_group;
+                            }
                         },
                     );
                     let (_output, paint_commands) = egui_platform.end_frame();
@@ -1051,69 +953,6 @@ async fn run() -> anyhow::Result<()> {
     });
 }
 
-fn create_texture(
-    device: &wgpu::Device,
-    label: &str,
-    width: u32,
-    height: u32,
-    format: wgpu::TextureFormat,
-    usage: wgpu::TextureUsage,
-) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-        })
-        .create_view(&wgpu::TextureViewDescriptor::default())
-}
-
-fn framebuffer_and_tonemapper_bind_group(
-    device: &wgpu::Device,
-    width: u32,
-    height: u32,
-    resources: &RenderResources,
-    tonemapper_uniform_buffer: &wgpu::Buffer,
-) -> (wgpu::TextureView, wgpu::BindGroup) {
-    let framebuffer_texture = create_texture(
-        &device,
-        "framebuffer texture",
-        width,
-        height,
-        FRAMEBUFFER_FORMAT,
-        wgpu::TextureUsage::RENDER_ATTACHMENT | wgpu::TextureUsage::SAMPLED,
-    );
-
-    let tonemapper_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("tonemapper bind group"),
-        layout: &resources.tonemap_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&framebuffer_texture),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&resources.sampler),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: tonemapper_uniform_buffer.as_entire_binding(),
-            },
-        ],
-    });
-
-    (framebuffer_texture, tonemapper_bind_group)
-}
-
 #[derive(Copy, Clone)]
 struct TonemapperParams {
     toe: f32,
@@ -1162,6 +1001,8 @@ fn draw_ui(
     render_ships: &mut bool,
     render_ship_shadows: &mut bool,
     cascade_split_lambda: &mut f32,
+    num_ships: &mut u32,
+    num_land_craft: &mut u32,
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
 
@@ -1211,6 +1052,14 @@ fn draw_ui(
             .radio_value(&mut settings.mode, index, format!("{:?}", mode))
             .changed();
     }
+
+    dirty.ships |= ui
+        .add(egui::widgets::Slider::u32(num_ships, 1..=2000).text("Number Of Ships"))
+        .changed();
+
+    dirty.landcrafts |= ui
+        .add(egui::widgets::Slider::u32(num_land_craft, 1..=2000).text("Number Of Landcrafts"))
+        .changed();
 
     ui.checkbox(render_sun_dir, "Render Sun Direction");
     ui.checkbox(move_vehicles, "Move Vehicles");
@@ -1287,6 +1136,8 @@ struct DirtyObjects {
     settings: bool,
     tonemapper: bool,
     csm: bool,
+    ships: bool,
+    landcrafts: bool,
 }
 
 const fn dispatch_count(num: u32, group_size: u32) -> u32 {
@@ -1321,250 +1172,4 @@ fn update_camera_and_shadows(
         scene.sun_facing,
         &queue,
     );
-}
-
-fn create_particle_bind_group(
-    device: &wgpu::Device,
-    name: &str,
-    num: u64,
-    colour: Vec3,
-    half_size_linear: f32,
-    resources: &RenderResources,
-) -> wgpu::BindGroup {
-    let particles_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some(&format!("{} buffer", name)),
-        usage: wgpu::BufferUsage::STORAGE,
-        size: std::mem::size_of::<primitives::Particle>() as u64 * num,
-        mapped_at_creation: false,
-    });
-
-    let particles_buffer_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(&format!("{} info buffer", name)),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::bytes_of(&primitives::ParticlesBufferInfo {
-            colour,
-            half_size_linear,
-            ..Default::default()
-        }),
-    });
-
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some(&format!("{} bind group", name)),
-        layout: &resources.particles_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: particles_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: particles_buffer_info.as_entire_binding(),
-            },
-        ],
-    })
-}
-
-fn create_animation_bind_group(
-    device: &wgpu::Device,
-    resources: &RenderResources,
-    num_instances: usize,
-    depth_first_nodes: &[primitives::NodeAndParent],
-    joint_indices_to_node_indices: &[u32],
-    inverse_bind_matrices: &[Mat4],
-    local_transforms: &[ultraviolet::Similarity3],
-    animation_states: &[primitives::AnimationState],
-) -> wgpu::BindGroup {
-    let num_joints = joint_indices_to_node_indices.len();
-    let num_nodes = depth_first_nodes.len();
-
-    println!("{}/{}", num_joints, num_nodes);
-
-    debug_assert_eq!(inverse_bind_matrices.len(), num_joints);
-    debug_assert_eq!(local_transforms.len(), num_nodes);
-
-    let joints = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("animation joints"),
-        usage: wgpu::BufferUsage::STORAGE,
-        size: (num_joints * num_instances * std::mem::size_of::<Mat4>()) as u64,
-        mapped_at_creation: false,
-    });
-
-    let info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("animation info"),
-        usage: wgpu::BufferUsage::UNIFORM,
-        contents: bytemuck::bytes_of(&primitives::AnimationInfo {
-            num_joints: num_joints as u32,
-            num_nodes: num_nodes as u32,
-            num_instances: num_instances as u32,
-        }),
-    });
-
-    let mut full_local_transforms = Vec::new();
-    for _ in 0..num_instances {
-        full_local_transforms.extend(local_transforms.iter().map(|sim| primitives::Similarity {
-            translation: sim.translation,
-            scale: sim.scale,
-            rotation: primitives::Rotor {
-                s: sim.rotation.s,
-                bv_xy: sim.rotation.bv.xy,
-                bv_xz: sim.rotation.bv.xz,
-                bv_yz: sim.rotation.bv.yz,
-            },
-        }));
-    }
-
-    debug_assert_eq!(full_local_transforms.len(), num_nodes * num_instances);
-
-    let local_transforms = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("animation local transforms"),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&full_local_transforms),
-    });
-
-    let animation_states = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("animation states"),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&animation_states),
-    });
-
-    let global_transforms = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("animation global transforms"),
-        usage: wgpu::BufferUsage::STORAGE,
-        size: (std::mem::size_of::<primitives::Similarity>() * num_instances * num_nodes) as u64,
-        mapped_at_creation: false,
-    });
-
-    let depth_first_nodes = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("animation depth first nodes"),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(depth_first_nodes),
-    });
-
-    let joint_indices_to_node_indices =
-        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("animation joint indices to node indices"),
-            usage: wgpu::BufferUsage::STORAGE,
-            contents: bytemuck::cast_slice(joint_indices_to_node_indices),
-        });
-
-    let inverse_bind_matrices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("animation inverse bind matrices"),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(inverse_bind_matrices),
-    });
-
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("animation bind group"),
-        layout: &resources.animation_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: joints.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: info.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: local_transforms.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: animation_states.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 4,
-                resource: global_transforms.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 5,
-                resource: depth_first_nodes.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 6,
-                resource: joint_indices_to_node_indices.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 7,
-                resource: inverse_bind_matrices.as_entire_binding(),
-            },
-        ],
-    })
-}
-
-fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
-    device: &wgpu::Device,
-    name: &str,
-    resources: &RenderResources,
-    iter: impl Iterator<Item = (Vec<f32>, Vec<T>, u32)>,
-) -> (wgpu::BindGroup, u32) {
-    let mut combined_inputs = Vec::new();
-    let mut combined_outputs = Vec::new();
-    let mut channels = Vec::new();
-
-    for (inputs, outputs, node_index) in iter {
-        let inputs_offset = combined_inputs.len() as u32;
-        let outputs_offset = combined_outputs.len() as u32;
-        let num_inputs = inputs.len() as u32;
-
-        channels.push(primitives::Channel {
-            inputs_offset,
-            outputs_offset,
-            num_inputs,
-            node_index,
-        });
-
-        combined_inputs.extend_from_slice(&inputs);
-        combined_outputs.extend_from_slice(&outputs);
-    }
-
-    let inputs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(&format!("animation {} channel inputs", name)),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&combined_inputs),
-    });
-
-    let outputs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(&format!("animation {} channel outputs", name)),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&combined_outputs),
-    });
-
-    let channels_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(&format!("animation {} channels", name)),
-        usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(&channels),
-    });
-
-    let channel_info = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(&format!("animation {} channel info", name)),
-        usage: wgpu::BufferUsage::UNIFORM,
-        contents: bytemuck::bytes_of(&(channels.len() as u32)),
-    });
-
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some(&format!("animation {} channels bind group", name)),
-        layout: &resources.channels_bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: inputs.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: outputs.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: channels_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: channel_info.as_entire_binding(),
-            },
-        ],
-    });
-
-    (bind_group, channels.len() as u32)
 }
