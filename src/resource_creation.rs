@@ -457,7 +457,7 @@ fn create_animation_bind_group(
     })
 }
 
-pub fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
+fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
     device: &wgpu::Device,
     name: &str,
     resources: &RenderResources,
@@ -531,4 +531,82 @@ pub fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
     });
 
     (bind_group, channels.len() as u32)
+}
+
+pub fn create_scale_channel_bind_group(
+    device: &wgpu::Device,
+    resources: &RenderResources,
+    animated_model: &AnimatedModel,
+) -> (wgpu::BindGroup, u32) {
+    create_channel_bind_group(
+        device,
+        "scales",
+        resources,
+        animated_model
+            .animation
+            .scale_channels
+            .iter()
+            .map(|channel| {
+                (
+                    channel.inputs.clone(),
+                    channel.outputs.clone(),
+                    channel.node_index as u32,
+                )
+            }),
+    )
+}
+
+pub fn create_translation_channel_bind_group(
+    device: &wgpu::Device,
+    resources: &RenderResources,
+    animated_model: &AnimatedModel,
+) -> (wgpu::BindGroup, u32) {
+    create_channel_bind_group(
+        device,
+        "translations",
+        resources,
+        animated_model
+            .animation
+            .translation_channels
+            .iter()
+            .map(move |channel| {
+                let outputs = channel
+                    .outputs
+                    .iter()
+                    .map(|&vec| primitives::Vec3A::new(vec))
+                    .collect::<Vec<_>>();
+
+                (channel.inputs.clone(), outputs, channel.node_index as u32)
+            }),
+    )
+}
+
+pub fn create_rotation_channel_bind_group(
+    device: &wgpu::Device,
+    resources: &RenderResources,
+    animated_model: &AnimatedModel,
+) -> (wgpu::BindGroup, u32) {
+    create_channel_bind_group(
+        device,
+        "rotations",
+        resources,
+        animated_model
+            .animation
+            .rotation_channels
+            .iter()
+            .map(move |channel| {
+                let outputs = channel
+                    .outputs
+                    .iter()
+                    .map(|&rotor| primitives::Rotor {
+                        s: rotor.s,
+                        bv_xy: rotor.bv.xy,
+                        bv_xz: rotor.bv.xz,
+                        bv_yz: rotor.bv.yz,
+                    })
+                    .collect::<Vec<_>>();
+
+                (channel.inputs.clone(), outputs, channel.node_index as u32)
+            }),
+    )
 }

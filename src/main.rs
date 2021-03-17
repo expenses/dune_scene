@@ -5,8 +5,9 @@ mod resources_and_pipelines;
 use cascaded_shadow_maps::CascadedShadowMaps;
 use model_loading::Scene;
 use resource_creation::{
-    create_animated_models, create_channel_bind_group, create_height_map, create_land_craft,
-    create_ships, create_texture, framebuffer_and_tonemapper_bind_group,
+    create_animated_models, create_height_map, create_land_craft,
+    create_rotation_channel_bind_group, create_scale_channel_bind_group, create_ships,
+    create_texture, create_translation_channel_bind_group, framebuffer_and_tonemapper_bind_group,
 };
 use resources_and_pipelines::{Pipelines, RenderResources};
 use ultraviolet::{Vec2, Vec3};
@@ -304,65 +305,14 @@ async fn run() -> anyhow::Result<()> {
         &settings,
     );
 
-    let (sample_scales_bind_group, num_scale_channels) = create_channel_bind_group(
-        &device,
-        "scales",
-        &resources,
-        animated_model
-            .animation
-            .scale_channels
-            .iter()
-            .map(|channel| {
-                (
-                    channel.inputs.clone(),
-                    channel.outputs.clone(),
-                    channel.node_index as u32,
-                )
-            }),
-    );
+    let (sample_scales_bind_group, num_scale_channels) =
+        create_scale_channel_bind_group(&device, &resources, &animated_model);
 
-    let (sample_translations_bind_group, num_translation_channels) = create_channel_bind_group(
-        &device,
-        "translations",
-        &resources,
-        animated_model
-            .animation
-            .translation_channels
-            .iter()
-            .map(move |channel| {
-                let outputs = channel
-                    .outputs
-                    .iter()
-                    .map(|&vec| primitives::Vec3A::new(vec))
-                    .collect::<Vec<_>>();
+    let (sample_translations_bind_group, num_translation_channels) =
+        create_translation_channel_bind_group(&device, &resources, &animated_model);
 
-                (channel.inputs.clone(), outputs, channel.node_index as u32)
-            }),
-    );
-
-    let (sample_rotations_bind_group, num_rotation_channels) = create_channel_bind_group(
-        &device,
-        "rotations",
-        &resources,
-        animated_model
-            .animation
-            .rotation_channels
-            .iter()
-            .map(move |channel| {
-                let outputs = channel
-                    .outputs
-                    .iter()
-                    .map(|&rotor| primitives::Rotor {
-                        s: rotor.s,
-                        bv_xy: rotor.bv.xy,
-                        bv_xz: rotor.bv.xz,
-                        bv_yz: rotor.bv.yz,
-                    })
-                    .collect::<Vec<_>>();
-
-                (channel.inputs.clone(), outputs, channel.node_index as u32)
-            }),
-    );
+    let (sample_rotations_bind_group, num_rotation_channels) =
+        create_rotation_channel_bind_group(&device, &resources, &animated_model);
 
     let num_joints = animated_model.joint_indices_to_node_indices.len() as u32;
 
