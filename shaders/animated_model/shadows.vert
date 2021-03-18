@@ -14,21 +14,15 @@ layout(location = 5) in vec4 joint_weights;
 
 layout(location = 6) in vec3 instance_position;
 
-layout(location = 0) out vec3 out_normal;
-layout(location = 1) out vec2 out_uv;
-layout(location = 2) out vec3 out_camera_dir;
-layout(location = 3) out vec3 out_pos;
-layout(location = 4) out vec3 out_view_pos;
-
-layout(set = 0, binding = 0) uniform CameraUniform {
-    Camera camera;
+layout(set = 0, binding = 0) uniform SunProjectionView {
+    mat4 projection_view;
 };
 
-layout(set = 2, binding = 0) readonly buffer JointTransforms {
+layout(set = 1, binding = 0) readonly buffer JointTransforms {
     Similarity joint_transforms[];
 };
 
-layout(set = 2, binding = 1) uniform AnimatedModelInfoUniform {
+layout(set = 1, binding = 1) uniform AnimatedModelInfoUniform {
     AnimatedModelInfo animated_model_info;
 };
 
@@ -49,11 +43,5 @@ void main() {
 
     vec3 position = skinned_pos + instance_position;
 
-    out_normal = rotor_mul_vec(skin.rotation, in_normal);
-    out_uv = in_uv;
-    out_camera_dir = camera.position - position;
-    out_pos = position;
-    out_view_pos = (camera.view * vec4(position, 1.0)).xyz;
-
-    gl_Position = camera.perspective_view * vec4(position, 1.0);
+    gl_Position = projection_view * vec4(position, 1.0);
 }

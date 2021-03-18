@@ -182,6 +182,9 @@ pub struct Pipelines {
     pub scene_shadows_pipeline: wgpu::RenderPipeline,
     pub ship_shadows_pipeline: wgpu::RenderPipeline,
     pub land_craft_shadows_pipeline: wgpu::RenderPipeline,
+    pub animated_model_pipeline: wgpu::RenderPipeline,
+    pub animated_model_shadows_pipeline: wgpu::RenderPipeline,
+
     pub ship_movement_pipeline: wgpu::ComputePipeline,
     pub particles_movement_pipeline: wgpu::ComputePipeline,
     pub land_craft_movement_pipeline: wgpu::ComputePipeline,
@@ -189,9 +192,9 @@ pub struct Pipelines {
     pub sample_translations_pipeline: wgpu::ComputePipeline,
     pub sample_rotations_pipeline: wgpu::ComputePipeline,
     pub compute_joint_transforms_pipeline: wgpu::ComputePipeline,
-    pub bake_height_map_pipeline: wgpu::RenderPipeline,
-    pub animated_model_pipeline: wgpu::RenderPipeline,
     pub set_global_transforms_pipeline: wgpu::ComputePipeline,
+
+    pub bake_height_map_pipeline: wgpu::RenderPipeline,
 }
 
 impl Pipelines {
@@ -559,6 +562,81 @@ impl Pipelines {
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
+            animated_model_pipeline: {
+                let animated_model_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("animated model pipeline layout"),
+                        bind_group_layouts: &[
+                            &resources.main_bgl,
+                            &resources.single_texture_bgl,
+                            &resources.animation_bgl,
+                            shadow_maps.rendering_bind_group_layout(),
+                        ],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_animated_model =
+                    wgpu::include_spirv!("../shaders/compiled/animated_model_shader.vert.spv");
+                let vs_animated_model = device.create_shader_module(&vs_animated_model);
+
+                let fs_animated_model =
+                    wgpu::include_spirv!("../shaders/compiled/animated_model_shader.frag.spv");
+                let fs_animated_model = device.create_shader_module(&fs_animated_model);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("animated model pipeline"),
+                    layout: Some(&animated_model_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_animated_model,
+                        entry_point: "main",
+                        buffers: &[
+                            animated_vertex_buffer_layout.clone(),
+                            animated_position_instance_layout.clone(),
+                        ],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_animated_model,
+                        entry_point: "main",
+                        targets: &[FRAMEBUFFER_FORMAT.into()],
+                    }),
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
+            animated_model_shadows_pipeline: {
+                let animated_model_shadows_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("animated model shadows pipeline layout"),
+                        bind_group_layouts: &[
+                            shadow_maps.light_projection_bind_group_layout(),
+                            &resources.animation_bgl,
+                        ],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_animated_model_shadows =
+                    wgpu::include_spirv!("../shaders/compiled/animated_model_shadows.vert.spv");
+                let vs_animated_model_shadows =
+                    device.create_shader_module(&vs_animated_model_shadows);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("animated model shadows pipeline"),
+                    layout: Some(&animated_model_shadows_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_animated_model_shadows,
+                        entry_point: "main",
+                        buffers: &[
+                            animated_vertex_buffer_layout.clone(),
+                            animated_position_instance_layout.clone(),
+                        ],
+                    },
+                    fragment: None,
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
             ship_movement_pipeline: {
                 let ship_movement_pipeline_layout =
                     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -721,47 +799,6 @@ impl Pipelines {
                     }),
                     primitive: wgpu::PrimitiveState::default(),
                     depth_stencil: None,
-                    multisample: wgpu::MultisampleState::default(),
-                })
-            },
-            animated_model_pipeline: {
-                let animated_model_pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("animated model pipeline layout"),
-                        bind_group_layouts: &[
-                            &resources.main_bgl,
-                            &resources.single_texture_bgl,
-                            &resources.animation_bgl,
-                        ],
-                        push_constant_ranges: &[],
-                    });
-
-                let vs_animated_model =
-                    wgpu::include_spirv!("../shaders/compiled/animated_model_shader.vert.spv");
-                let vs_animated_model = device.create_shader_module(&vs_animated_model);
-
-                let fs_animated_model =
-                    wgpu::include_spirv!("../shaders/compiled/animated_model_shader.frag.spv");
-                let fs_animated_model = device.create_shader_module(&fs_animated_model);
-
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("animated model pipeline"),
-                    layout: Some(&animated_model_pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vs_animated_model,
-                        entry_point: "main",
-                        buffers: &[
-                            animated_vertex_buffer_layout.clone(),
-                            animated_position_instance_layout.clone(),
-                        ],
-                    },
-                    fragment: Some(wgpu::FragmentState {
-                        module: &fs_animated_model,
-                        entry_point: "main",
-                        targets: &[FRAMEBUFFER_FORMAT.into()],
-                    }),
-                    primitive: backface_culling.clone(),
-                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },
