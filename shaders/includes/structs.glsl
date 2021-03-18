@@ -69,3 +69,45 @@ struct LandCraft {
     float facing;
     mat3 rotation_matrix;
 };
+
+struct Rotor {
+    float s;
+    float bv_xy;
+    float bv_xz;
+    float bv_yz;
+};
+
+struct Similarity {
+    vec3 translation;
+    float scale;
+    Rotor rotation;
+};
+
+struct NodeAndParent {
+    uint node_index;
+    int parent_index;
+};
+
+struct AnimatedModelState {
+    float time;
+    float animation_duration;
+    uint animation_index;
+};
+
+struct Channel {
+    uint inputs_offset;
+    uint outputs_offset;
+    uint num_inputs;
+    uint node_index;
+};
+
+struct AnimatedModelInfo {
+    uint num_joints;
+    uint num_nodes;
+    uint num_instances;
+};
+
+struct AnimationInfo {
+    uint num_channels;
+    uint channels_offset;
+};

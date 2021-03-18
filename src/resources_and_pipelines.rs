@@ -1,6 +1,6 @@
 use crate::{DEPTH_FORMAT, FRAMEBUFFER_FORMAT};
 use cascaded_shadow_maps::CascadedShadowMaps;
-use primitives::Vertex;
+use primitives::{AnimatedVertex, Vertex};
 
 /// All the permament resources that we can load before creating a window.
 pub struct RenderResources {
@@ -11,6 +11,8 @@ pub struct RenderResources {
     pub ship_bgl: wgpu::BindGroupLayout,
     pub particles_bgl: wgpu::BindGroupLayout,
     pub land_craft_bgl: wgpu::BindGroupLayout,
+    pub animation_bgl: wgpu::BindGroupLayout,
+    pub channels_bgl: wgpu::BindGroupLayout,
     pub sampler: wgpu::Sampler,
     pub clamp_sampler: wgpu::Sampler,
 }
@@ -125,6 +127,33 @@ impl RenderResources {
                     texture(1, wgpu::ShaderStage::COMPUTE),
                 ],
             }),
+            animation_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("animation bind group layout"),
+                entries: &[
+                    storage(
+                        0,
+                        wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX,
+                        false,
+                    ),
+                    uniform(1, wgpu::ShaderStage::COMPUTE | wgpu::ShaderStage::VERTEX),
+                    storage(2, wgpu::ShaderStage::COMPUTE, false),
+                    storage(3, wgpu::ShaderStage::COMPUTE, false),
+                    storage(4, wgpu::ShaderStage::COMPUTE, false),
+                    storage(5, wgpu::ShaderStage::COMPUTE, true),
+                    storage(6, wgpu::ShaderStage::COMPUTE, true),
+                    storage(7, wgpu::ShaderStage::COMPUTE, true),
+                ],
+            }),
+            channels_bgl: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("channels bind group layout"),
+                entries: &[
+                    storage(0, wgpu::ShaderStage::COMPUTE, true),
+                    storage(1, wgpu::ShaderStage::COMPUTE, true),
+                    storage(2, wgpu::ShaderStage::COMPUTE, true),
+                    uniform(3, wgpu::ShaderStage::COMPUTE),
+                    storage(4, wgpu::ShaderStage::COMPUTE, true),
+                ],
+            }),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("linear sampler"),
                 mag_filter: wgpu::FilterMode::Linear,
@@ -156,7 +185,13 @@ pub struct Pipelines {
     pub ship_movement_pipeline: wgpu::ComputePipeline,
     pub particles_movement_pipeline: wgpu::ComputePipeline,
     pub land_craft_movement_pipeline: wgpu::ComputePipeline,
+    pub sample_scales_pipeline: wgpu::ComputePipeline,
+    pub sample_translations_pipeline: wgpu::ComputePipeline,
+    pub sample_rotations_pipeline: wgpu::ComputePipeline,
+    pub compute_joint_transforms_pipeline: wgpu::ComputePipeline,
     pub bake_height_map_pipeline: wgpu::RenderPipeline,
+    pub animated_model_pipeline: wgpu::RenderPipeline,
+    pub set_global_transforms_pipeline: wgpu::ComputePipeline,
 }
 
 impl Pipelines {
@@ -187,6 +222,13 @@ impl Pipelines {
                 push_constant_ranges: &[],
             });
 
+        let animation_sampling_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("animation sampling pipeline layout"),
+                bind_group_layouts: &[&resources.animation_bgl, &resources.channels_bgl],
+                push_constant_ranges: &[],
+            });
+
         let fs_flat_colour = wgpu::include_spirv!("../shaders/compiled/flat_colour.frag.spv");
         let fs_flat_colour = device.create_shader_module(&fs_flat_colour);
 
@@ -194,6 +236,18 @@ impl Pipelines {
             array_stride: std::mem::size_of::<Vertex>() as u64,
             step_mode: wgpu::InputStepMode::Vertex,
             attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4],
+        };
+
+        let animated_vertex_buffer_layout = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<AnimatedVertex>() as u64,
+            step_mode: wgpu::InputStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float3, 1 => Float3, 2 => Float2, 3 => Float4, 4 => Ushort4, 5 => Float4],
+        };
+
+        let animated_position_instance_layout = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<ultraviolet::Vec3>() as u64,
+            step_mode: wgpu::InputStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![6 => Float3],
         };
 
         let depth_write = wgpu::DepthStencilState {
@@ -564,6 +618,85 @@ impl Pipelines {
                     entry_point: "main",
                 })
             },
+            set_global_transforms_pipeline: {
+                let set_global_transforms_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("set global transforms pipeline layout"),
+                        bind_group_layouts: &[&resources.animation_bgl, &resources.main_bgl],
+                        push_constant_ranges: &[],
+                    });
+
+                let cs_set_global_transforms = wgpu::include_spirv!(
+                    "../shaders/compiled/animation_set_global_transforms.comp.spv"
+                );
+                let cs_set_global_transforms =
+                    device.create_shader_module(&cs_set_global_transforms);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("set global transforms pipeline"),
+                    layout: Some(&set_global_transforms_pipeline_layout),
+                    module: &cs_set_global_transforms,
+                    entry_point: "main",
+                })
+            },
+            compute_joint_transforms_pipeline: {
+                let compute_joint_transforms_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("compute joint transforms pipeline layout"),
+                        bind_group_layouts: &[&resources.animation_bgl],
+                        push_constant_ranges: &[],
+                    });
+
+                let cs_compute_joint_transforms = wgpu::include_spirv!(
+                    "../shaders/compiled/animation_compute_joint_transforms.comp.spv"
+                );
+                let cs_compute_joint_transforms =
+                    device.create_shader_module(&cs_compute_joint_transforms);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("create joint transforms pipeline"),
+                    layout: Some(&compute_joint_transforms_pipeline_layout),
+                    module: &cs_compute_joint_transforms,
+                    entry_point: "main",
+                })
+            },
+            sample_scales_pipeline: {
+                let cs_sample_scales =
+                    wgpu::include_spirv!("../shaders/compiled/animation_sample_scales.comp.spv");
+                let cs_sample_scales = device.create_shader_module(&cs_sample_scales);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("sample scales pipeline"),
+                    layout: Some(&animation_sampling_pipeline_layout),
+                    module: &cs_sample_scales,
+                    entry_point: "main",
+                })
+            },
+            sample_translations_pipeline: {
+                let cs_sample_translations = wgpu::include_spirv!(
+                    "../shaders/compiled/animation_sample_translations.comp.spv"
+                );
+                let cs_sample_translations = device.create_shader_module(&cs_sample_translations);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("sample translations pipeline"),
+                    layout: Some(&animation_sampling_pipeline_layout),
+                    module: &cs_sample_translations,
+                    entry_point: "main",
+                })
+            },
+            sample_rotations_pipeline: {
+                let cs_sample_rotations =
+                    wgpu::include_spirv!("../shaders/compiled/animation_sample_rotations.comp.spv");
+                let cs_sample_rotations = device.create_shader_module(&cs_sample_rotations);
+
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("sample rotations pipeline"),
+                    layout: Some(&animation_sampling_pipeline_layout),
+                    module: &cs_sample_rotations,
+                    entry_point: "main",
+                })
+            },
             bake_height_map_pipeline: {
                 let vs_bake_height_map =
                     wgpu::include_spirv!("../shaders/compiled/bake_height_map.vert.spv");
@@ -588,6 +721,47 @@ impl Pipelines {
                     }),
                     primitive: wgpu::PrimitiveState::default(),
                     depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                })
+            },
+            animated_model_pipeline: {
+                let animated_model_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("animated model pipeline layout"),
+                        bind_group_layouts: &[
+                            &resources.main_bgl,
+                            &resources.single_texture_bgl,
+                            &resources.animation_bgl,
+                        ],
+                        push_constant_ranges: &[],
+                    });
+
+                let vs_animated_model =
+                    wgpu::include_spirv!("../shaders/compiled/animated_model_shader.vert.spv");
+                let vs_animated_model = device.create_shader_module(&vs_animated_model);
+
+                let fs_animated_model =
+                    wgpu::include_spirv!("../shaders/compiled/animated_model_shader.frag.spv");
+                let fs_animated_model = device.create_shader_module(&fs_animated_model);
+
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("animated model pipeline"),
+                    layout: Some(&animated_model_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vs_animated_model,
+                        entry_point: "main",
+                        buffers: &[
+                            animated_vertex_buffer_layout.clone(),
+                            animated_position_instance_layout.clone(),
+                        ],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_animated_model,
+                        entry_point: "main",
+                        targets: &[FRAMEBUFFER_FORMAT.into()],
+                    }),
+                    primitive: backface_culling.clone(),
+                    depth_stencil: Some(depth_write.clone()),
                     multisample: wgpu::MultisampleState::default(),
                 })
             },

@@ -1,0 +1,64 @@
+
+#version 450
+
+#include "../includes/structs.glsl"
+#include "../includes/matrices.glsl"
+#include "../includes/rotor.glsl"
+#include "../includes/similarity.glsl"
+
+layout(set = 0, binding = 1) uniform AnimatedModelInfoUniform {
+    AnimatedModelInfo animated_model_info;
+};
+
+layout(set = 0, binding = 2) readonly buffer LocalTransforms {
+    Similarity local_transforms[];
+};
+
+layout(set = 0, binding = 3) buffer AnimatedModelStates {
+    AnimatedModelState animated_model_states[];
+};
+
+layout(set = 0, binding = 4) buffer GlobalTransforms {
+    Similarity global_transforms[];
+};
+
+layout(set = 0, binding = 5) readonly buffer DepthFirstNodes {
+    NodeAndParent depth_first_nodes[];
+};
+
+layout(set = 1, binding = 4) uniform TimeBuffer {
+    Time time;
+};
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+
+    uint nodes_offset = index * animated_model_info.num_nodes;
+    uint joints_offset = index * animated_model_info.num_joints;
+
+    if (index >= animated_model_info.num_instances) {
+        return;
+    }
+
+    for (uint i = 0; i < animated_model_info.num_nodes; i++) {
+        NodeAndParent indices = depth_first_nodes[i];
+
+        uint node_index = nodes_offset + indices.node_index;
+        Similarity local_transform = local_transforms[node_index];
+
+        // No divergence as all the models are the same.
+        if (indices.parent_index != -1) {
+            Similarity parent_transform = global_transforms[nodes_offset + indices.parent_index];
+            // Multiplying similarities seems to be about 10us faster than converting to matrices
+            // and multiplying those (50us vs 40us)!
+            global_transforms[node_index] = similarity_mul_similarity(parent_transform, local_transform);
+        } else {
+            global_transforms[node_index] = local_transform;
+        }
+    }
+
+    AnimatedModelState state = animated_model_states[index];
+    animated_model_states[index].time = mod(state.time + time.delta_time, state.animation_duration);
+}
