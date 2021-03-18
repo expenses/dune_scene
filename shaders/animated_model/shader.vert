@@ -1,6 +1,9 @@
 #version 450
 
 #include "../includes/structs.glsl"
+#include "../includes/matrices.glsl"
+#include "../includes/rotor.glsl"
+#include "../includes/similarity.glsl"
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
@@ -18,7 +21,7 @@ layout(set = 0, binding = 0) uniform CameraUniform {
 };
 
 layout(set = 2, binding = 0) readonly buffer JointTransforms {
-    mat4 joint_transforms[];
+    Similarity joint_transforms[];
 };
 
 layout(set = 2, binding = 1) uniform AnimatedModelInfoUniform {
@@ -30,14 +33,17 @@ void main() {
 
     uint joint_offset = gl_InstanceIndex * animated_model_info.num_joints;
 
-    // Calculate skinned matrix from weights and joint indices of the current vertex
-	mat4 skin =
-		joint_weights.x * joint_transforms[joint_indices.x + joint_offset] +
-		joint_weights.y * joint_transforms[joint_indices.y + joint_offset] +
-		joint_weights.z * joint_transforms[joint_indices.z + joint_offset] +
-		joint_weights.w * joint_transforms[joint_indices.w + joint_offset];
+    // Calculate skinning sim from weights and joint indices of the current vertex
+    Similarity x = similarity_mul_scalar(joint_transforms[joint_indices.x + joint_offset], joint_weights.x);
+    Similarity y = similarity_mul_scalar(joint_transforms[joint_indices.y + joint_offset], joint_weights.y);
+    Similarity z = similarity_mul_scalar(joint_transforms[joint_indices.z + joint_offset], joint_weights.z);
+    Similarity w = similarity_mul_scalar(joint_transforms[joint_indices.w + joint_offset], joint_weights.w);
 
-    vec3 skinned_pos = (skin * vec4(in_position, 1.0)).xyz;
+    Similarity skin = similarity_add_similarity(
+        similarity_add_similarity(x, y), similarity_add_similarity(z, w)
+    );
+
+    vec3 skinned_pos = similarity_transform_vec(skin, in_position);
 
     vec3 position = skinned_pos + instance_position;
 

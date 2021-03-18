@@ -1,7 +1,7 @@
 use crate::RenderResources;
 use primitives::{AnimatedVertex, Sun, Vec3A, Vertex};
 use std::collections::HashMap;
-use ultraviolet::{Mat4, Vec2, Vec3};
+use ultraviolet::{Mat4, Similarity3, Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 pub struct Orbit {
@@ -70,7 +70,7 @@ impl Scene {
 
         let buffer_blob = gltf.blob.as_ref().unwrap();
 
-        let node_tree = NodeTree::new(&gltf);
+        let node_tree = NodeTree::new(gltf.nodes());
 
         let (camera_node_index, camera) = gltf
             .nodes()
@@ -84,8 +84,8 @@ impl Scene {
 
         let camera_transform = node_tree.transform_of(camera_node_index);
 
-        let camera_eye = camera_transform.extract_translation();
-        let camera_rotor = camera_transform.extract_rotation();
+        let camera_eye = camera_transform.translation;
+        let camera_rotor = camera_transform.rotation;
         let camera_view_direction = camera_rotor * -Vec3::unit_z();
         let look_at = {
             // Multiplier to bring y to zero
@@ -126,7 +126,7 @@ impl Scene {
             .nodes()
             .find_map(|node| node.light().map(|light| (node.index(), light)))
             .unwrap();
-        let sun_rotor = node_tree.transform_of(sun_node_index).extract_rotation();
+        let sun_rotor = node_tree.transform_of(sun_node_index).rotation;
 
         let sun_facing = sun_rotor * Vec3::unit_z();
 
@@ -280,16 +280,24 @@ fn load_image(
         .create_view(&wgpu::TextureViewDescriptor::default()))
 }
 
+fn sim_from_transform(transform: gltf::scene::Transform) -> Similarity3 {
+    let (translation, rotation, scale) = transform.decomposed();
+    let translation = Vec3::from(translation);
+    let rotation = ultraviolet::Rotor3::from_quaternion_array(rotation);
+    Similarity3::new(translation, rotation, scale[0])
+}
+
 struct NodeTree {
-    inner: Vec<(Mat4, usize)>,
+    inner: Vec<(Similarity3, usize)>,
 }
 
 impl NodeTree {
-    fn new(gltf: &gltf::Gltf) -> Self {
-        let mut inner = vec![(Mat4::identity(), usize::max_value()); gltf.nodes().count()];
+    fn new<'a>(iterator: impl Iterator<Item = gltf::Node<'a>> + Clone) -> Self {
+        let mut inner =
+            vec![(Similarity3::identity(), usize::max_value()); iterator.clone().count()];
 
-        for node in gltf.nodes() {
-            inner[node.index()].0 = node.transform().matrix().into();
+        for node in iterator {
+            inner[node.index()].0 = sim_from_transform(node.transform());
             for child in node.children() {
                 inner[child.index()].1 = node.index();
             }
@@ -298,8 +306,8 @@ impl NodeTree {
         Self { inner }
     }
 
-    fn transform_of(&self, mut index: usize) -> Mat4 {
-        let mut transform_sum = Mat4::identity();
+    fn transform_of(&self, mut index: usize) -> Similarity3 {
+        let mut transform_sum = Similarity3::identity();
 
         while index != usize::max_value() {
             let (transform, parent_index) = self.inner[index];
@@ -347,7 +355,7 @@ impl Ship {
 
         let buffer_blob = gltf.blob.as_ref().unwrap();
 
-        let node_tree = NodeTree::new(&gltf);
+        let node_tree = NodeTree::new(gltf.nodes());
 
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
@@ -386,7 +394,7 @@ impl Ship {
                         let position: Vec3 = position.into();
 
                         vertices.push(Vertex {
-                            position: transform.transform_vec3(position),
+                            position: transform.transform_vec(position),
                             uv: uv.into(),
                             normal: normal.into(),
                             tangent: tangent.into(),
@@ -537,7 +545,7 @@ pub struct AnimatedModel {
     pub animations: Vec<animation::Animation>,
     pub initial_local_transforms: Vec<ultraviolet::Similarity3>,
     pub joint_indices_to_node_indices: Vec<usize>,
-    pub inverse_bind_matrices: Vec<Mat4>,
+    pub inverse_bind_transforms: Vec<Similarity3>,
     pub depth_first_nodes: Vec<(usize, Option<usize>)>,
 }
 
@@ -552,7 +560,7 @@ impl AnimatedModel {
 
         let buffer_blob = gltf.blob.as_ref().unwrap();
 
-        let node_tree = NodeTree::new(&gltf);
+        let node_tree = NodeTree::new(gltf.nodes());
 
         assert!(gltf.skins().count() <= 1);
         let skin = gltf.skins().next();
@@ -569,7 +577,7 @@ impl AnimatedModel {
         {
             let transform = if node.skin().is_some() {
                 // We can't apply transformations on animated models, but we also don't need to..
-                Mat4::identity()
+                Similarity3::identity()
             } else {
                 // We allow combining animated and non animated meshes
                 node_tree.transform_of(node.index())
@@ -615,7 +623,7 @@ impl AnimatedModel {
                         let position: Vec3 = position.into();
 
                         vertices.push(AnimatedVertex {
-                            position: transform.transform_vec3(position),
+                            position: transform.transform_vec(position),
                             uv: uv.into(),
                             normal: normal.into(),
                             tangent: tangent.into(),
@@ -664,14 +672,17 @@ impl AnimatedModel {
             gltf.nodes().map(|node| node.index()).collect()
         };
 
-        let inverse_bind_matrices = if let Some(skin) = skin.as_ref() {
+        let inverse_bind_transforms: Vec<Similarity3> = if let Some(skin) = skin.as_ref() {
             skin.reader(|buffer| {
                 assert_eq!(buffer.index(), 0);
                 Some(buffer_blob)
             })
             .read_inverse_bind_matrices()
             .ok_or_else(|| anyhow::anyhow!("Missing inverse bind matrices"))?
-            .map(|mat| mat.into())
+            .map(|matrix| {
+                let transform = gltf::scene::Transform::Matrix { matrix };
+                sim_from_transform(transform)
+            })
             .collect()
         } else {
             gltf.nodes()
@@ -690,7 +701,7 @@ impl AnimatedModel {
             depth_first_nodes,
             initial_local_transforms,
             joint_indices_to_node_indices,
-            inverse_bind_matrices,
+            inverse_bind_transforms,
         })
     }
 }

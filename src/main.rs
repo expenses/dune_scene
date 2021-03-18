@@ -658,17 +658,26 @@ async fn run() -> anyhow::Result<()> {
                         ),
                     });
 
-                    render_pass.set_pipeline(&pipelines.animated_model_pipeline);
-                    render_pass.set_bind_group(0, &bind_group, &[]);
-                    render_pass.set_bind_group(1, &animated_model.texture_bind_group, &[]);
-                    render_pass.set_bind_group(2, &animation_bind_group, &[]);
-                    render_pass.set_vertex_buffer(0, animated_model.vertices.slice(..));
-                    render_pass.set_vertex_buffer(1, position_instances_buffer.slice(..));
-                    render_pass.set_index_buffer(animated_model.indices.slice(..), INDEX_FORMAT);
-                    render_pass.draw_indexed(
-                        0..animated_model.num_indices,
-                        0,
-                        0..num_animated_models,
+                    wgpu_profiler!(
+                        "rendering animated models",
+                        &mut profiler,
+                        &mut render_pass,
+                        &device,
+                        {
+                            render_pass.set_pipeline(&pipelines.animated_model_pipeline);
+                            render_pass.set_bind_group(0, &bind_group, &[]);
+                            render_pass.set_bind_group(1, &animated_model.texture_bind_group, &[]);
+                            render_pass.set_bind_group(2, &animation_bind_group, &[]);
+                            render_pass.set_vertex_buffer(0, animated_model.vertices.slice(..));
+                            render_pass.set_vertex_buffer(1, position_instances_buffer.slice(..));
+                            render_pass
+                                .set_index_buffer(animated_model.indices.slice(..), INDEX_FORMAT);
+                            render_pass.draw_indexed(
+                                0..animated_model.num_indices,
+                                0,
+                                0..num_animated_models,
+                            );
+                        }
                     );
 
                     if render_ships {

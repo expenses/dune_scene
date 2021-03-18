@@ -2,7 +2,7 @@ use crate::model_loading::AnimatedModel;
 use crate::resources_and_pipelines::{Pipelines, RenderResources};
 use crate::{FRAMEBUFFER_FORMAT, INDEX_FORMAT};
 use rand::Rng;
-use ultraviolet::{Mat4, Vec3};
+use ultraviolet::{Similarity3, Vec3};
 use wgpu::util::DeviceExt;
 
 pub fn create_height_map(
@@ -311,7 +311,7 @@ pub fn create_animated_models(
             .iter()
             .map(|index| *index as u32)
             .collect::<Vec<_>>(),
-        &animated_model.inverse_bind_matrices,
+        &animated_model.inverse_bind_transforms,
         &animated_model.initial_local_transforms,
         &animated_model_states,
     );
@@ -341,20 +341,20 @@ fn create_animation_bind_group(
     num_instances: usize,
     depth_first_nodes: &[primitives::NodeAndParent],
     joint_indices_to_node_indices: &[u32],
-    inverse_bind_matrices: &[Mat4],
-    local_transforms: &[ultraviolet::Similarity3],
+    inverse_bind_transforms: &[Similarity3],
+    local_transforms: &[Similarity3],
     animated_model_states: &[primitives::AnimatedModelState],
 ) -> wgpu::BindGroup {
     let num_joints = joint_indices_to_node_indices.len();
     let num_nodes = depth_first_nodes.len();
 
-    debug_assert_eq!(inverse_bind_matrices.len(), num_joints);
+    debug_assert_eq!(inverse_bind_transforms.len(), num_joints);
     debug_assert_eq!(local_transforms.len(), num_nodes);
 
     let joints = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("animation joints"),
         usage: wgpu::BufferUsage::STORAGE,
-        size: (num_joints * num_instances * std::mem::size_of::<Mat4>()) as u64,
+        size: (num_joints * num_instances * std::mem::size_of::<primitives::Similarity>()) as u64,
         mapped_at_creation: false,
     });
 
@@ -416,10 +416,24 @@ fn create_animation_bind_group(
             contents: bytemuck::cast_slice(joint_indices_to_node_indices),
         });
 
+    let inverse_bind_transforms: Vec<_> = inverse_bind_transforms
+        .iter()
+        .map(|sim| primitives::Similarity {
+            translation: sim.translation,
+            scale: sim.scale,
+            rotation: primitives::Rotor {
+                s: sim.rotation.s,
+                bv_xy: sim.rotation.bv.xy,
+                bv_xz: sim.rotation.bv.xz,
+                bv_yz: sim.rotation.bv.yz,
+            },
+        })
+        .collect();
+
     let inverse_bind_matrices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("animation inverse bind matrices"),
         usage: wgpu::BufferUsage::STORAGE,
-        contents: bytemuck::cast_slice(inverse_bind_matrices),
+        contents: bytemuck::cast_slice(&inverse_bind_transforms),
     });
 
     device.create_bind_group(&wgpu::BindGroupDescriptor {

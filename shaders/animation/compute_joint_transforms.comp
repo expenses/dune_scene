@@ -4,17 +4,10 @@
 #include "../includes/structs.glsl"
 #include "../includes/matrices.glsl"
 #include "../includes/rotor.glsl"
-
-mat4 similarity_to_mat4(Similarity sim) {
-    mat4 scale_matrix = scale_matrix(sim.scale);
-    mat4 translation_matrix = translation_matrix(sim.translation);
-    mat4 rotation_matrix = mat4(rotor_to_matrix(sim.rotation));
-
-    return translation_matrix * rotation_matrix * scale_matrix;
-}
+#include "../includes/similarity.glsl"
 
 layout(set = 0, binding = 0) writeonly buffer JointTransforms {
-    mat4 joint_transforms[];
+    Similarity joint_transforms[];
 };
 
 layout(set = 0, binding = 1) uniform AnimatedModelInfoUniform {
@@ -29,8 +22,8 @@ layout(set = 0, binding = 6) readonly buffer JointIndicesToNodeIndices {
     uint joint_indices_to_node_indices[];
 };
 
-layout(set = 0, binding = 7) readonly buffer InverseBindMatrices {
-    mat4 inverse_bind_matrices[];
+layout(set = 0, binding = 7) readonly buffer InverseBindTransforms {
+    Similarity inverse_bind_transforms[];
 };
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -48,8 +41,8 @@ void main() {
     uint local_joint_index = global_joint_index % animated_model_info.num_joints;
     uint global_node_index = global_node_offset + joint_indices_to_node_indices[local_joint_index];
 
-    mat4 inverse_bind_matrix = inverse_bind_matrices[local_joint_index];
-    mat4 matrix_global_transform = similarity_to_mat4(global_transforms[global_node_index]);
+    Similarity inverse_bind_transform = inverse_bind_transforms[local_joint_index];
+    Similarity matrix_global_transform = global_transforms[global_node_index];
 
-    joint_transforms[global_joint_index] = matrix_global_transform * inverse_bind_matrix;
+    joint_transforms[global_joint_index] = similarity_mul_similarity(matrix_global_transform, inverse_bind_transform);
 }

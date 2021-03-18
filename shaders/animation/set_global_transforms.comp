@@ -4,20 +4,7 @@
 #include "../includes/structs.glsl"
 #include "../includes/matrices.glsl"
 #include "../includes/rotor.glsl"
-
-vec3 similarity_transform_vec(Similarity sim, vec3 vec) {
-    vec = rotor_mul_vec(sim.rotation, vec);
-    vec *= sim.scale;
-    vec += sim.translation;
-    return vec;
-}
-
-Similarity similiarity_mul_similarity(Similarity sim, Similarity base) {
-    sim.translation = similarity_transform_vec(sim, base.translation);
-    sim.rotation = rotor_mul_rotor(sim.rotation, base.rotation);
-    sim.scale *= base.scale;
-    return sim;
-}
+#include "../includes/similarity.glsl"
 
 layout(set = 0, binding = 1) uniform AnimatedModelInfoUniform {
     AnimatedModelInfo animated_model_info;
@@ -66,7 +53,7 @@ void main() {
             Similarity parent_transform = global_transforms[nodes_offset + indices.parent_index];
             // Multiplying similarities seems to be about 10us faster than converting to matrices
             // and multiplying those (50us vs 40us)!
-            global_transforms[node_index] = similiarity_mul_similarity(parent_transform, local_transform);
+            global_transforms[node_index] = similarity_mul_similarity(parent_transform, local_transform);
         } else {
             global_transforms[node_index] = local_transform;
         }
