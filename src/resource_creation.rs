@@ -373,12 +373,7 @@ fn create_animation_bind_group(
         full_local_transforms.extend(local_transforms.iter().map(|sim| primitives::Similarity {
             translation: sim.translation,
             scale: sim.scale,
-            rotation: primitives::Rotor {
-                s: sim.rotation.s,
-                bv_xy: sim.rotation.bv.xy,
-                bv_xz: sim.rotation.bv.xz,
-                bv_yz: sim.rotation.bv.yz,
-            },
+            rotation: sim.rotation,
         }));
     }
 
@@ -421,12 +416,7 @@ fn create_animation_bind_group(
         .map(|sim| primitives::Similarity {
             translation: sim.translation,
             scale: sim.scale,
-            rotation: primitives::Rotor {
-                s: sim.rotation.s,
-                bv_xy: sim.rotation.bv.xy,
-                bv_xz: sim.rotation.bv.xz,
-                bv_yz: sim.rotation.bv.yz,
-            },
+            rotation: sim.rotation,
         })
         .collect();
 
@@ -647,18 +637,11 @@ pub fn create_rotation_channel_bind_group(
             .iter()
             .flat_map(|animation| animation.rotation_channels.iter())
             .map(move |channel| {
-                let outputs = channel
-                    .outputs
-                    .iter()
-                    .map(|&rotor| primitives::Rotor {
-                        s: rotor.s,
-                        bv_xy: rotor.bv.xy,
-                        bv_xz: rotor.bv.xz,
-                        bv_yz: rotor.bv.yz,
-                    })
-                    .collect::<Vec<_>>();
-
-                (channel.inputs.clone(), outputs, channel.node_index as u32)
+                (
+                    channel.inputs.clone(),
+                    channel.outputs.clone(),
+                    channel.node_index as u32,
+                )
             }),
         animated_model
             .animations

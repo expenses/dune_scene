@@ -71,10 +71,10 @@ struct LandCraft {
 };
 
 struct Rotor {
+    float s;
     float bv_xy;
     float bv_xz;
     float bv_yz;
-    float s;
 };
 
 struct Similarity {

@@ -1,4 +1,4 @@
-use ultraviolet::{Mat4, Vec2, Vec3, Vec4};
+use ultraviolet::{Mat4, Rotor3, Vec2, Vec3, Vec4};
 
 /// A 16-byte aligned `Vec3`.
 #[repr(C)]
@@ -165,7 +165,7 @@ pub struct LandCraft {
 pub struct Similarity {
     pub translation: Vec3,
     pub scale: f32,
-    pub rotation: Rotor,
+    pub rotation: Rotor3,
 }
 
 #[repr(C)]
@@ -192,15 +192,6 @@ pub struct AnimatedModelInfo {
     pub num_joints: u32,
     pub num_nodes: u32,
     pub num_instances: u32,
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Rotor {
-    pub bv_xy: f32,
-    pub bv_xz: f32,
-    pub bv_yz: f32,
-    pub s: f32,
 }
 
 #[repr(C)]
