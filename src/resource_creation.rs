@@ -2,7 +2,7 @@ use crate::model_loading::AnimatedModel;
 use crate::resources_and_pipelines::{Pipelines, RenderResources};
 use crate::{FRAMEBUFFER_FORMAT, INDEX_FORMAT};
 use rand::Rng;
-use ultraviolet::{Similarity3, Vec3};
+use ultraviolet::Vec3;
 use wgpu::util::DeviceExt;
 
 pub fn create_height_map(
@@ -306,11 +306,7 @@ pub fn create_animated_models(
                 parent_index: parent_index.map(|p| p as i32).unwrap_or(-1),
             })
             .collect::<Vec<_>>(),
-        &animated_model
-            .joint_indices_to_node_indices
-            .iter()
-            .map(|index| *index as u32)
-            .collect::<Vec<_>>(),
+        &animated_model.joint_indices_to_node_indices,
         &animated_model.inverse_bind_transforms,
         &animated_model.initial_local_transforms,
         &animated_model_states,
@@ -341,8 +337,8 @@ fn create_animation_bind_group(
     num_instances: usize,
     depth_first_nodes: &[primitives::NodeAndParent],
     joint_indices_to_node_indices: &[u32],
-    inverse_bind_transforms: &[Similarity3],
-    local_transforms: &[Similarity3],
+    inverse_bind_transforms: &[primitives::Similarity],
+    local_transforms: &[primitives::Similarity],
     animated_model_states: &[primitives::AnimatedModelState],
 ) -> wgpu::BindGroup {
     let num_joints = joint_indices_to_node_indices.len();
@@ -370,11 +366,7 @@ fn create_animation_bind_group(
 
     let mut full_local_transforms = Vec::new();
     for _ in 0..num_instances {
-        full_local_transforms.extend(local_transforms.iter().map(|sim| primitives::Similarity {
-            translation: sim.translation,
-            scale: sim.scale,
-            rotation: sim.rotation,
-        }));
+        full_local_transforms.extend_from_slice(local_transforms);
     }
 
     debug_assert_eq!(full_local_transforms.len(), num_nodes * num_instances);
@@ -411,17 +403,8 @@ fn create_animation_bind_group(
             contents: bytemuck::cast_slice(joint_indices_to_node_indices),
         });
 
-    let inverse_bind_transforms: Vec<_> = inverse_bind_transforms
-        .iter()
-        .map(|sim| primitives::Similarity {
-            translation: sim.translation,
-            scale: sim.scale,
-            rotation: sim.rotation,
-        })
-        .collect();
-
-    let inverse_bind_matrices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("animation inverse bind matrices"),
+    let inverse_bind_transforms = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("animation inverse bind transforms"),
         usage: wgpu::BufferUsage::STORAGE,
         contents: bytemuck::cast_slice(&inverse_bind_transforms),
     });
@@ -460,13 +443,13 @@ fn create_animation_bind_group(
             },
             wgpu::BindGroupEntry {
                 binding: 7,
-                resource: inverse_bind_matrices.as_entire_binding(),
+                resource: inverse_bind_transforms.as_entire_binding(),
             },
         ],
     })
 }
 
-fn create_channel_bind_group<'a, T: bytemuck::Pod + Clone>(
+fn create_channel_bind_group<T: bytemuck::Pod + Clone>(
     device: &wgpu::Device,
     name: &str,
     resources: &RenderResources,

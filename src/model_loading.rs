@@ -543,9 +543,9 @@ pub struct AnimatedModel {
     pub texture_bind_group: wgpu::BindGroup,
 
     pub animations: Vec<animation::Animation>,
-    pub initial_local_transforms: Vec<ultraviolet::Similarity3>,
-    pub joint_indices_to_node_indices: Vec<usize>,
-    pub inverse_bind_transforms: Vec<Similarity3>,
+    pub initial_local_transforms: Vec<primitives::Similarity>,
+    pub joint_indices_to_node_indices: Vec<u32>,
+    pub inverse_bind_transforms: Vec<primitives::Similarity>,
     pub depth_first_nodes: Vec<(usize, Option<usize>)>,
 }
 
@@ -667,12 +667,12 @@ impl AnimatedModel {
         let depth_first_nodes: Vec<_> = node_tree.iter_depth_first().collect();
 
         let joint_indices_to_node_indices = if let Some(skin) = skin.as_ref() {
-            skin.joints().map(|node| node.index()).collect()
+            skin.joints().map(|node| node.index() as u32).collect()
         } else {
-            gltf.nodes().map(|node| node.index()).collect()
+            gltf.nodes().map(|node| node.index() as u32).collect()
         };
 
-        let inverse_bind_transforms: Vec<Similarity3> = if let Some(skin) = skin.as_ref() {
+        let inverse_bind_transforms: Vec<_> = if let Some(skin) = skin.as_ref() {
             skin.reader(|buffer| {
                 assert_eq!(buffer.index(), 0);
                 Some(buffer_blob)
@@ -683,14 +683,19 @@ impl AnimatedModel {
                 let transform = gltf::scene::Transform::Matrix { matrix };
                 sim_from_transform(transform)
             })
+            .map(sim_to_primitive)
             .collect()
         } else {
             gltf.nodes()
                 .map(|node| node_tree.transform_of(node.index()).inversed())
+                .map(sim_to_primitive)
                 .collect()
         };
 
-        let initial_local_transforms = animation::initial_local_transforms_from_nodes(gltf.nodes());
+        let initial_local_transforms = animation::initial_local_transforms_from_nodes(gltf.nodes())
+            .into_iter()
+            .map(sim_to_primitive)
+            .collect();
 
         Ok(Self {
             vertices,
@@ -703,5 +708,13 @@ impl AnimatedModel {
             joint_indices_to_node_indices,
             inverse_bind_transforms,
         })
+    }
+}
+
+fn sim_to_primitive(sim: Similarity3) -> primitives::Similarity {
+    primitives::Similarity {
+        translation: sim.translation,
+        scale: sim.scale,
+        rotation: sim.rotation,
     }
 }
