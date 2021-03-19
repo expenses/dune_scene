@@ -8,5 +8,5 @@ edition = "2018"
 
 [dependencies]
 bytemuck = { version = "1.5.1", features = ["derive"] }
-ultraviolet = { git = "https://github.com/termhn/ultraviolet", features = ["bytemuck"] }
+ultraviolet = { version = "0.8.0", features = ["bytemuck"] }
 wgpu = "0.7.0"

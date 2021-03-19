@@ -10,4 +10,4 @@ edition = "2018"
 gltf = { version = "0.15.2", default-features = false, features = ["utils", "names"] }
 log = "0.4.14"
 ordered-float = "2.1.1"
-ultraviolet = { git = "https://github.com/termhn/ultraviolet" }
+ultraviolet = "0.8.0"
