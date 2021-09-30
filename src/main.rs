@@ -5,12 +5,14 @@ mod resources_and_pipelines;
 use cascaded_shadow_maps::CascadedShadowMaps;
 use model_loading::Scene;
 use resource_creation::{
-    create_height_map, create_land_craft, create_ships, create_texture,
-    framebuffer_and_tonemapper_bind_group,
+    create_animated_models, create_height_map, create_land_craft,
+    create_rotation_channel_bind_group, create_scale_channel_bind_group, create_ships,
+    create_texture, create_translation_channel_bind_group, framebuffer_and_tonemapper_bind_group,
 };
 use resources_and_pipelines::{Pipelines, RenderResources};
 use ultraviolet::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
+use wgpu_profiler::wgpu_profiler;
 
 fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "wasm"))]
@@ -73,12 +75,17 @@ async fn run() -> anyhow::Result<()> {
         .request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("device"),
-                features: wgpu::Features::empty(),
-                limits: wgpu::Limits::default(),
+                features: wgpu_profiler::GpuProfiler::REQUIRED_WGPU_FEATURES,
+                limits: wgpu::Limits {
+                    max_storage_buffers_per_shader_stage: 7,
+                    ..Default::default()
+                },
             },
             None,
         )
         .await?;
+
+    let mut profiler = wgpu_profiler::GpuProfiler::new(4, adapter.get_timestamp_period());
 
     let resources = RenderResources::new(&device);
 
@@ -141,6 +148,10 @@ async fn run() -> anyhow::Result<()> {
 
     let land_craft_bytes = include_bytes!("../models/landcraft.glb");
     let land_craft = model_loading::LandCraft::load(land_craft_bytes, &device, &queue, &resources)?;
+
+    let animated_model_bytes = include_bytes!("../models/mouse.glb");
+    let animated_model =
+        model_loading::AnimatedModel::load(animated_model_bytes, &device, &queue, &resources)?;
 
     let display_format = adapter.get_swap_chain_preferred_format(&surface);
     let window_size = window.inner_size();
@@ -294,6 +305,26 @@ async fn run() -> anyhow::Result<()> {
         &settings,
     );
 
+    let (sample_scales_bind_group, max_num_scale_channels) =
+        create_scale_channel_bind_group(&device, &resources, &animated_model);
+
+    let (sample_translations_bind_group, max_num_translation_channels) =
+        create_translation_channel_bind_group(&device, &resources, &animated_model);
+
+    let (sample_rotations_bind_group, max_num_rotation_channels) =
+        create_rotation_channel_bind_group(&device, &resources, &animated_model);
+
+    let num_joints = animated_model.joint_indices_to_node_indices.len() as u32;
+
+    let mut num_animated_models = 1000;
+    let (mut animation_bind_group, mut position_instances_buffer) = create_animated_models(
+        num_animated_models,
+        &device,
+        &resources,
+        &mut rng,
+        &animated_model,
+    );
+
     let mut render_sun_dir = false;
     let mut move_vehicles = true;
     let mut render_ships = true;
@@ -305,6 +336,8 @@ async fn run() -> anyhow::Result<()> {
 
     let mut previous_cursor_position = Vec2::zero();
     let mut mouse_down = false;
+
+    let mut profiler_results = Vec::new();
 
     event_loop.run(move |event, _, control_flow| {
         egui_platform.handle_event(&event);
@@ -430,6 +463,105 @@ async fn run() -> anyhow::Result<()> {
                             label: Some("compute pass"),
                         });
 
+                    if max_num_translation_channels > 0 {
+                        wgpu_profiler!(
+                            "sampling translations",
+                            &mut profiler,
+                            &mut compute_pass,
+                            &device,
+                            {
+                                compute_pass.set_pipeline(&pipelines.sample_translations_pipeline);
+                                compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                                compute_pass.set_bind_group(
+                                    1,
+                                    &sample_translations_bind_group,
+                                    &[],
+                                );
+                                compute_pass.dispatch(
+                                    dispatch_count(
+                                        num_animated_models * max_num_translation_channels,
+                                        64,
+                                    ),
+                                    1,
+                                    1,
+                                );
+                            }
+                        );
+                    }
+
+                    if max_num_scale_channels > 0 {
+                        wgpu_profiler!(
+                            "sampling scales",
+                            &mut profiler,
+                            &mut compute_pass,
+                            &device,
+                            {
+                                compute_pass.set_pipeline(&pipelines.sample_scales_pipeline);
+                                compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                                compute_pass.set_bind_group(1, &sample_scales_bind_group, &[]);
+                                compute_pass.dispatch(
+                                    dispatch_count(
+                                        num_animated_models * max_num_scale_channels,
+                                        64,
+                                    ),
+                                    1,
+                                    1,
+                                );
+                            }
+                        );
+                    }
+
+                    if max_num_rotation_channels > 0 {
+                        wgpu_profiler!(
+                            "sampling rotations",
+                            &mut profiler,
+                            &mut compute_pass,
+                            &device,
+                            {
+                                compute_pass.set_pipeline(&pipelines.sample_rotations_pipeline);
+                                compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                                compute_pass.set_bind_group(1, &sample_rotations_bind_group, &[]);
+                                compute_pass.dispatch(
+                                    dispatch_count(
+                                        num_animated_models * max_num_rotation_channels,
+                                        64,
+                                    ),
+                                    1,
+                                    1,
+                                );
+                            }
+                        );
+                    }
+
+                    wgpu_profiler!(
+                        "setting global transforms",
+                        &mut profiler,
+                        &mut compute_pass,
+                        &device,
+                        {
+                            compute_pass.set_pipeline(&pipelines.set_global_transforms_pipeline);
+                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                            compute_pass.set_bind_group(1, &bind_group, &[]);
+                            compute_pass.dispatch(dispatch_count(num_animated_models, 64), 1, 1);
+                        }
+                    );
+
+                    wgpu_profiler!(
+                        "computing joint transforms",
+                        &mut profiler,
+                        &mut compute_pass,
+                        &device,
+                        {
+                            compute_pass.set_pipeline(&pipelines.compute_joint_transforms_pipeline);
+                            compute_pass.set_bind_group(0, &animation_bind_group, &[]);
+                            compute_pass.dispatch(
+                                dispatch_count(num_animated_models * num_joints, 64),
+                                1,
+                                1,
+                            );
+                        }
+                    );
+
                     compute_pass.set_pipeline(&pipelines.particles_movement_pipeline);
                     compute_pass.set_bind_group(0, &bind_group, &[]);
 
@@ -481,6 +613,19 @@ async fn run() -> anyhow::Result<()> {
                                 ),
                             });
 
+                        render_pass.set_pipeline(&pipelines.animated_model_shadows_pipeline);
+                        render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
+                        render_pass.set_bind_group(1, &animation_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, animated_model.vertices.slice(..));
+                        render_pass.set_vertex_buffer(1, position_instances_buffer.slice(..));
+                        render_pass
+                            .set_index_buffer(animated_model.indices.slice(..), INDEX_FORMAT);
+                        render_pass.draw_indexed(
+                            0..animated_model.num_indices,
+                            0,
+                            0..num_animated_models,
+                        );
+
                         if render_ship_shadows {
                             render_pass.set_pipeline(&pipelines.ship_shadows_pipeline);
                             render_pass.set_bind_group(0, &light_projection_bind_groups[i], &[]);
@@ -525,6 +670,33 @@ async fn run() -> anyhow::Result<()> {
                             },
                         ),
                     });
+
+                    wgpu_profiler!(
+                        "rendering animated models",
+                        &mut profiler,
+                        &mut render_pass,
+                        &device,
+                        {
+                            render_pass.set_pipeline(&pipelines.animated_model_pipeline);
+                            render_pass.set_bind_group(0, &bind_group, &[]);
+                            render_pass.set_bind_group(1, &animated_model.texture_bind_group, &[]);
+                            render_pass.set_bind_group(2, &animation_bind_group, &[]);
+                            render_pass.set_bind_group(
+                                3,
+                                cascaded_shadow_maps.rendering_bind_group(),
+                                &[],
+                            );
+                            render_pass.set_vertex_buffer(0, animated_model.vertices.slice(..));
+                            render_pass.set_vertex_buffer(1, position_instances_buffer.slice(..));
+                            render_pass
+                                .set_index_buffer(animated_model.indices.slice(..), INDEX_FORMAT);
+                            render_pass.draw_indexed(
+                                0..animated_model.num_indices,
+                                0,
+                                0..num_animated_models,
+                            );
+                        }
+                    );
 
                     if render_ships {
                         render_pass.set_pipeline(&pipelines.ship_pipeline);
@@ -635,6 +807,7 @@ async fn run() -> anyhow::Result<()> {
                                 &mut cascade_split_lambda,
                                 &mut num_ships,
                                 &mut num_land_craft,
+                                &mut num_animated_models,
                             );
 
                             if dirty.settings {
@@ -705,6 +878,20 @@ async fn run() -> anyhow::Result<()> {
                                 num_sand_particles = new_num_sand_particles;
                                 sand_particles_bind_group = new_sand_particles_bind_group;
                             }
+
+                            if dirty.animated_models {
+                                let (new_animation_bind_group, new_position_instances_buffer) =
+                                    create_animated_models(
+                                        num_animated_models,
+                                        &device,
+                                        &resources,
+                                        &mut rng,
+                                        &animated_model,
+                                    );
+
+                                animation_bind_group = new_animation_bind_group;
+                                position_instances_buffer = new_position_instances_buffer;
+                            }
                         },
                     );
                     let (_output, paint_commands) = egui_platform.end_frame();
@@ -737,10 +924,28 @@ async fn run() -> anyhow::Result<()> {
                         None,
                     );
 
+                    profiler.resolve_queries(&mut encoder);
+
                     queue.submit(Some(encoder.finish()));
+
+                    profiler.end_frame().unwrap();
+
+                    if let Some(results) = profiler.process_finished_frame() {
+                        profiler_results.extend(results);
+                    }
                 }
                 Err(error) => println!("Swap chain error: {:?}", error),
             },
+            #[cfg(not(feature = "wasm"))]
+            Event::LoopDestroyed => {
+                let duration_since_epoch = std::time::UNIX_EPOCH.elapsed().unwrap();
+                let seconds = duration_since_epoch.as_secs();
+                wgpu_profiler::chrometrace::write_chrometrace(
+                    std::path::Path::new(&format!("{}.json", seconds)),
+                    &profiler_results,
+                )
+                .unwrap();
+            }
             _ => {}
         }
     });
@@ -796,6 +1001,7 @@ fn draw_ui(
     cascade_split_lambda: &mut f32,
     num_ships: &mut u32,
     num_land_craft: &mut u32,
+    num_animated_models: &mut u32,
 ) -> DirtyObjects {
     let mut dirty = DirtyObjects::default();
 
@@ -852,6 +1058,13 @@ fn draw_ui(
 
     dirty.landcrafts |= ui
         .add(egui::widgets::Slider::u32(num_land_craft, 1..=2000).text("Number Of Landcrafts"))
+        .changed();
+
+    dirty.animated_models |= ui
+        .add(
+            egui::widgets::Slider::u32(num_animated_models, 1..=2000)
+                .text("Number Of Animated Models"),
+        )
         .changed();
 
     ui.checkbox(render_sun_dir, "Render Sun Direction");
@@ -931,6 +1144,7 @@ struct DirtyObjects {
     csm: bool,
     ships: bool,
     landcrafts: bool,
+    animated_models: bool,
 }
 
 const fn dispatch_count(num: u32, group_size: u32) -> u32 {

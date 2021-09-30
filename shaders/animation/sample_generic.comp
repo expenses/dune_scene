@@ -1,0 +1,112 @@
+
+#version 450
+
+#include "../includes/structs.glsl"
+#include "../includes/rotor.glsl"
+#include "interpolation.glsl"
+
+layout(set = 0, binding = 1) uniform AnimatedModelInfoUniform {
+    AnimatedModelInfo animated_model_info;
+};
+
+layout(set = 0, binding = 2) writeonly buffer LocalTransforms {
+    Similarity local_transforms[];
+};
+
+layout(set = 0, binding = 3) readonly buffer AnimatedModelStates {
+    AnimatedModelState animated_model_states[];
+};
+
+layout(set = 1, binding = 0) readonly buffer Inputs {
+    float inputs[];
+};
+
+layout(set = 1, binding = 1) readonly buffer Outputs {
+    SAMPLE_TYPE outputs[];
+};
+
+layout(set = 1, binding = 2) readonly buffer Channels {
+    Channel channels[];
+};
+
+layout(set = 1, binding = 3) uniform MaxNumChannels {
+    uint max_num_channels;
+};
+
+layout(set = 1, binding = 4) readonly buffer AnimationInfoBuffer {
+    AnimationInfo animation_info[];
+};
+
+SAMPLE_TYPE sample_cubic_spline(float t, Channel channel) {
+    uint i = 0;
+
+    while (i < channel.num_inputs && inputs[channel.inputs_offset + i + 1] < t) {
+        i++;
+    }
+
+    float previous_time = inputs[channel.inputs_offset + i];
+    float next_time = inputs[channel.inputs_offset + i + 1];
+    float delta = next_time - previous_time;
+    float from_start = t - previous_time;
+    float factor = from_start / delta;
+
+    SAMPLE_TYPE starting_point = outputs[channel.outputs_offset + i * 3 + 1];
+    SAMPLE_TYPE starting_out_tangent = outputs[channel.outputs_offset + i * 3 + 2];
+
+    SAMPLE_TYPE ending_in_tangent = outputs[channel.outputs_offset + i * 3 + 3];
+    SAMPLE_TYPE ending_point = outputs[channel.outputs_offset + i * 3 + 4];
+
+    return cublic_spline_interpolate(
+        starting_point,
+        starting_out_tangent,
+        ending_point,
+        ending_in_tangent,
+        delta,
+        factor
+    );
+}
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+
+    // todo: when we have a model with a variable about of channels per animation,
+    // try transposing this so we're iterating through models and then channels
+    // to see if it's faster.
+    uint instance_index = index / max_num_channels;
+
+    if (instance_index >= animated_model_info.num_instances) {
+        return;
+    }
+
+    AnimatedModelState animated_model_state = animated_model_states[instance_index];
+
+    AnimationInfo animation_info = animation_info[animated_model_state.animation_index];
+
+    uint channel_index = index % max_num_channels;
+
+    // We dispatch num_instances * max_num_channels threads, so if an animation
+    // has less channels than that, we just return. This is a tad wasteful, but
+    // it seems to be performant enough.
+    if (channel_index >= animation_info.num_channels) {
+        return;
+    }
+
+    float time = animated_model_state.time;
+
+    Channel channel = channels[animation_info.channels_offset + channel_index];
+
+    // If the time is out of the animation range of this channel, then return.
+    if (
+        time < inputs[channel.inputs_offset] ||
+        time > inputs[channel.inputs_offset + channel.num_inputs - 1]
+    ) {
+        return;
+    }
+
+    SAMPLE_TYPE value = sample_cubic_spline(time, channel);
+
+    uint node_offset = instance_index * animated_model_info.num_nodes;
+    local_transforms[node_offset + channel.node_index].FIELD = value;
+}

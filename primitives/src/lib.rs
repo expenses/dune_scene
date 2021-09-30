@@ -1,4 +1,4 @@
-use ultraviolet::{Mat4, Vec2, Vec3, Vec4};
+use ultraviolet::{Mat4, Rotor3, Vec2, Vec3, Vec4};
 
 /// A 16-byte aligned `Vec3`.
 #[repr(C)]
@@ -158,4 +158,62 @@ pub struct LandCraft {
     pub position: Vec3,
     pub facing: f32,
     pub _rotation_matrix: [Vec4; 3],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Similarity {
+    pub translation: Vec3,
+    pub scale: f32,
+    pub rotation: Rotor3,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct NodeAndParent {
+    pub node_index: u32,
+    pub parent_index: i32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct AnimatedVertex {
+    pub position: Vec3,
+    pub normal: Vec3,
+    pub uv: Vec2,
+    pub tangent: Vec4,
+    pub joint_indices: [u16; 4],
+    pub joint_weights: Vec4,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct AnimatedModelInfo {
+    pub num_joints: u32,
+    pub num_nodes: u32,
+    pub num_instances: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct AnimatedModelState {
+    pub time: f32,
+    pub animation_duration: f32,
+    pub animation_index: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Channel {
+    pub inputs_offset: u32,
+    pub outputs_offset: u32,
+    pub num_inputs: u32,
+    pub node_index: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct AnimationInfo {
+    pub num_channels: u32,
+    pub channels_offset: u32,
 }
